@@ -1,6 +1,6 @@
-# 童裝訂單系統 (Kidswear B2B Platform)
+# 童裝訂單系統 (Kidswear Platform)
 
-> B2B 整合式童裝訂單平台，以 AI 推薦系統為核心亮點。
+> 整合式童裝訂單平台，以 AI 推薦系統為核心亮點。
 > 解決童裝批發商與零售商之間下單效率低落的問題。
 
 [![Tech Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20NestJS%20%7C%20FastAPI-blue)]()
@@ -11,7 +11,7 @@
 
 ## ✨ 核心特色
 
-### 🎯 B2B 訂單平台
+### 🎯 訂單平台
 - 批發商開設專屬商城、管理商品與訂單
 - 零售商線上瀏覽、下單、追蹤出貨
 - 訂單狀態機、歷史快照、完整稽核
