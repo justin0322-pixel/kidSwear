@@ -1,0 +1,103 @@
+# Cursor AI 開發規則
+
+本檔案供 Cursor 編輯器的 AI 功能使用。完整規範請見 `CLAUDE.md` 和 `docs/` 資料夾。
+
+---
+
+## 專案身份
+
+童裝訂單系統 - B2B 電商平台（求職作品集）
+核心: Next.js + NestJS + FastAPI + PostgreSQL + pgvector + Docker
+
+## 技術堆疊（嚴格遵守）
+
+- Frontend: Next.js 14 App Router + TypeScript + Tailwind + shadcn/ui
+- Backend: NestJS + TypeScript + Prisma
+- Recommender: FastAPI + Python 3.11
+- Database: PostgreSQL 16 + pgvector
+- Cache: Redis 7
+
+## 核心規則
+
+1. **全部 TypeScript**（不要寫 JavaScript）
+2. **禁止 `any` 型別**
+3. **禁止 `console.log`**（用 logger）
+4. **禁止硬編碼密鑰**（用環境變數）
+5. **金額用字串傳輸、Decimal 儲存**
+6. **所有 API 必須有 DTO 驗證**
+7. **Controller 薄、Service 厚**
+8. **優先 Server Components**（React）
+9. **資料庫改動一律走 migration**
+10. **遵守 docs/api-spec.md 的 API 規範**
+
+## 命名慣例
+
+- 變數/函式: camelCase
+- 類別/型別: PascalCase
+- 常數: SCREAMING_SNAKE_CASE
+- 資料庫: snake_case
+- API 路由: kebab-case 複數名詞
+
+## 回應格式
+
+所有 API 統一用：
+
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+錯誤時：
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "..."
+  }
+}
+```
+
+## 檔案結構
+
+```
+backend/src/<domain>/
+├── <domain>.module.ts
+├── <domain>.controller.ts
+├── <domain>.service.ts
+├── dto/
+│   └── *.dto.ts
+└── *.spec.ts
+```
+
+## 安全
+
+- 密碼: bcrypt cost 12
+- JWT: RS256, access 15min, refresh 30d httpOnly cookie
+- OAuth state: 必須驗證防 CSRF
+- Rate limit: 認證 10/min, 一般 300/min
+
+## 測試
+
+- 所有 Service method 要有單元測試
+- 所有 API 端點要有 E2E 測試
+- 覆蓋率目標 > 70%
+
+## 禁止
+
+- 刪除使用者未要求刪除的 code
+- 一次產出 > 5 個檔案（分批確認）
+- 整檔重寫（用 str_replace）
+- 擅自變更技術棧
+
+## 詳細規範
+
+遇到任何不確定，**優先查詢**：
+1. `docs/SPEC.md`
+2. `docs/api-spec.md`
+3. `docs/user-flows.md`
+4. `docs/database-schema.sql`
+5. `CLAUDE.md`
