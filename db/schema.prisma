@@ -1,0 +1,389 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), uuidOssp(map: "uuid-ossp")]
+}
+
+// ============================================================
+// 使用者域（User Domain）
+// ============================================================
+
+model User {
+  id              BigInt     @id @default(autoincrement())
+  email           String?    @unique @db.VarChar(255)
+  phone           String?    @unique @db.VarChar(20)
+  passwordHash    String?    @map("password_hash") @db.VarChar(255)
+  role            UserRole
+  status          UserStatus @default(active)
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz
+  lastLoginAt     DateTime?  @map("last_login_at") @db.Timestamptz
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz
+
+  wholesaler         Wholesaler?
+  retailer           Retailer?
+  oauthAccounts      UserOauthAccount[]
+  orderStatusChanges OrderStatusHistory[]
+
+  @@index([role, status])
+  @@index([email])
+  @@map("users")
+}
+
+enum UserRole {
+  wholesaler
+  retailer
+  admin
+}
+
+enum UserStatus {
+  active
+  suspended
+  pending
+}
+
+model Wholesaler {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @unique @map("user_id")
+  companyName   String    @map("company_name") @db.VarChar(100)
+  taxId         String?   @unique @map("tax_id") @db.VarChar(20)
+  contactPerson String    @map("contact_person") @db.VarChar(50)
+  address       String?
+  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop Shop?
+
+  @@map("wholesalers")
+}
+
+model Retailer {
+  id              BigInt   @id @default(autoincrement())
+  userId          BigInt   @unique @map("user_id")
+  shopName        String   @map("shop_name") @db.VarChar(100)
+  taxId           String?  @map("tax_id") @db.VarChar(20)
+  contactPerson   String   @map("contact_person") @db.VarChar(50)
+  shippingAddress String   @map("shipping_address")
+  preferenceTags  Json     @default("{}") @map("preference_tags")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          Order[]
+  behaviors       UserBehavior[]
+  recommendations Recommendation[]
+
+  @@map("retailers")
+}
+
+model UserOauthAccount {
+  id             BigInt        @id @default(autoincrement())
+  userId         BigInt        @map("user_id")
+  provider       OauthProvider
+  providerUserId String        @map("provider_user_id") @db.VarChar(255)
+  providerEmail  String?       @map("provider_email") @db.VarChar(255)
+  providerName   String?       @map("provider_name") @db.VarChar(100)
+  providerAvatar String?       @map("provider_avatar")
+  accessToken    String?       @map("access_token")
+  refreshToken   String?       @map("refresh_token")
+  tokenExpiresAt DateTime?     @map("token_expires_at") @db.Timestamptz
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@index([provider, providerUserId])
+  @@map("user_oauth_accounts")
+}
+
+enum OauthProvider {
+  google
+  line
+  facebook
+}
+
+// ============================================================
+// 商城域（Shop Domain）
+// ============================================================
+
+model Shop {
+  id             BigInt    @id @default(autoincrement())
+  wholesalerId   BigInt    @unique @map("wholesaler_id")
+  name           String    @db.VarChar(100)
+  slug           String    @unique @db.VarChar(100)
+  description    String?
+  logoUrl        String?   @map("logo_url")
+  bannerUrl      String?   @map("banner_url")
+  minOrderAmount Decimal   @default(0) @map("min_order_amount") @db.Decimal(10, 2)
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  products   Product[]
+  orders     Order[]
+  tags       Tag[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("shops")
+}
+
+// ============================================================
+// 商品域（Product Domain）
+// ============================================================
+
+model Product {
+  id                   BigInt                      @id @default(autoincrement())
+  shopId               BigInt                      @map("shop_id")
+  name                 String                      @db.VarChar(200)
+  description          String?
+  skuPrefix            String?                     @map("sku_prefix") @db.VarChar(50)
+  category             String                      @db.VarChar(50)
+  ageRange             String?                     @map("age_range") @db.VarChar(20)
+  gender               ProductGender?
+  basePrice            Decimal                     @map("base_price") @db.Decimal(10, 2)
+  suggestedRetailPrice Decimal?                    @map("suggested_retail_price") @db.Decimal(10, 2)
+  attributes           Json                        @default("{}")
+  status               ProductStatus               @default(draft)
+  viewCount            Int                         @default(0) @map("view_count")
+  orderCount           Int                         @default(0) @map("order_count")
+  imageEmbedding       Unsupported("vector(512)")? @map("image_embedding")
+  createdAt            DateTime                    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime                    @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt            DateTime?                   @map("deleted_at") @db.Timestamptz
+
+  shop            Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  variants        ProductVariant[]
+  images          ProductImage[]
+  productTags     ProductTag[]
+  behaviors       UserBehavior[]
+  recommendations Recommendation[]
+
+  @@index([shopId, status])
+  @@index([category])
+  @@map("products")
+}
+
+enum ProductGender {
+  boy
+  girl
+  unisex
+}
+
+enum ProductStatus {
+  draft
+  active
+  sold_out
+  archived
+}
+
+model ProductVariant {
+  id            BigInt   @id @default(autoincrement())
+  productId     BigInt   @map("product_id")
+  sku           String   @unique @db.VarChar(100)
+  size          String   @db.VarChar(20)
+  color         String   @db.VarChar(30)
+  priceOverride Decimal? @map("price_override") @db.Decimal(10, 2)
+  stock         Int      @default(0)
+  reservedStock Int      @default(0) @map("reserved_stock")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@unique([productId, size, color])
+  @@index([productId])
+  @@index([stock])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        BigInt   @id @default(autoincrement())
+  productId BigInt   @map("product_id")
+  url       String
+  altText   String?  @map("alt_text") @db.VarChar(200)
+  sortOrder Int      @default(0) @map("sort_order")
+  isPrimary Boolean  @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
+}
+
+model Tag {
+  id         BigInt   @id @default(autoincrement())
+  shopId     BigInt?  @map("shop_id")
+  name       String   @db.VarChar(50)
+  category   String?  @db.VarChar(30)
+  color      String?  @db.VarChar(7)
+  usageCount Int      @default(0) @map("usage_count")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  shop        Shop?        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  productTags ProductTag[]
+
+  @@unique([shopId, name])
+  @@index([shopId])
+  @@map("tags")
+}
+
+model ProductTag {
+  productId BigInt   @map("product_id")
+  tagId     BigInt   @map("tag_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+  @@index([tagId])
+  @@map("product_tags")
+}
+
+// ============================================================
+// 訂單域（Order Domain）
+// ============================================================
+
+model Order {
+  id              BigInt      @id @default(autoincrement())
+  orderNumber     String      @unique @map("order_number") @db.VarChar(30)
+  retailerId      BigInt      @map("retailer_id")
+  shopId          BigInt      @map("shop_id")
+  subtotal        Decimal     @db.Decimal(10, 2)
+  shippingFee     Decimal     @default(0) @map("shipping_fee") @db.Decimal(10, 2)
+  discount        Decimal     @default(0) @db.Decimal(10, 2)
+  total           Decimal     @db.Decimal(10, 2)
+  status          OrderStatus @default(pending)
+  shippingAddress String      @map("shipping_address")
+  contactName     String      @map("contact_name") @db.VarChar(50)
+  contactPhone    String      @map("contact_phone") @db.VarChar(20)
+  retailerNote    String?     @map("retailer_note")
+  wholesalerNote  String?     @map("wholesaler_note")
+  paidAt          DateTime?   @map("paid_at") @db.Timestamptz
+  shippedAt       DateTime?   @map("shipped_at") @db.Timestamptz
+  completedAt     DateTime?   @map("completed_at") @db.Timestamptz
+  cancelledAt     DateTime?   @map("cancelled_at") @db.Timestamptz
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  retailer      Retailer             @relation(fields: [retailerId], references: [id])
+  shop          Shop                 @relation(fields: [shopId], references: [id])
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+
+  @@index([retailerId, createdAt(sort: Desc)])
+  @@index([shopId, status])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  pending
+  paid
+  processing
+  shipped
+  completed
+  cancelled
+  refunded
+}
+
+model OrderItem {
+  id          BigInt   @id @default(autoincrement())
+  orderId     BigInt   @map("order_id")
+  variantId   BigInt   @map("variant_id")
+  productName String   @map("product_name") @db.VarChar(200)
+  sku         String   @db.VarChar(100)
+  size        String   @db.VarChar(20)
+  color       String   @db.VarChar(30)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(10, 2)
+  quantity    Int
+  subtotal    Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@index([variantId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         BigInt   @id @default(autoincrement())
+  orderId    BigInt   @map("order_id")
+  fromStatus String?  @map("from_status") @db.VarChar(30)
+  toStatus   String   @map("to_status") @db.VarChar(30)
+  changedBy  BigInt?  @map("changed_by")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order         Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedByUser User? @relation(fields: [changedBy], references: [id])
+
+  @@index([orderId, createdAt(sort: Desc)])
+  @@map("order_status_history")
+}
+
+// ============================================================
+// 行為與推薦域（Behavior & Recommendation Domain）
+// ============================================================
+
+model UserBehavior {
+  id         BigInt         @id @default(autoincrement())
+  retailerId BigInt         @map("retailer_id")
+  productId  BigInt?        @map("product_id")
+  action     BehaviorAction
+  weight     Int            @default(1) @db.SmallInt
+  metadata   Json?
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  retailer Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([retailerId, createdAt(sort: Desc)])
+  @@index([productId, action])
+  @@map("user_behaviors")
+}
+
+enum BehaviorAction {
+  view
+  add_to_cart
+  remove_from_cart
+  purchase
+  favorite
+}
+
+model Recommendation {
+  id                BigInt    @id @default(autoincrement())
+  retailerId        BigInt    @map("retailer_id")
+  productId         BigInt    @map("product_id")
+  score             Decimal   @db.Decimal(5, 4)
+  reason            String    @db.VarChar(50)
+  reasonText        String?   @map("reason_text")
+  reasonGeneratedAt DateTime? @map("reason_generated_at") @db.Timestamptz
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  retailer Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([retailerId, productId, reason])
+  @@index([retailerId, score(sort: Desc)])
+  @@map("recommendations")
+}
