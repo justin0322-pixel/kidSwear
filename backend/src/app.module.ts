@@ -4,7 +4,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
+import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
+import { RedisModule } from './redis/redis.module';
 import { TagsModule } from './tags/tags.module';
 import { ProductsModule } from './products/products.module';
 import { ShopsModule } from './shops/shops.module';
@@ -25,6 +27,8 @@ import { UsersModule } from './users/users.module';
     ProductsModule,
     OrdersModule,
     TagsModule,
+    RedisModule,
+    CartModule,
   ],
 })
 export class AppModule {}
