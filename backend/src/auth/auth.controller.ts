@@ -46,11 +46,8 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '刷新 Access Token' })
-  async refresh(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<object> {
-    const data = await this.authService.refresh(req, res)
+  async refresh(@Req() req: Request): Promise<object> {
+    const data = await this.authService.refresh(req)
     return { success: true, data }
   }
 

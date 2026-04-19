@@ -18,6 +18,17 @@ import { JwtPayload } from './interfaces/jwt-payload.interface'
 const BCRYPT_COST = 12
 const REFRESH_COOKIE = 'refresh_token'
 
+function toSlug(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 30)
+  const suffix = Math.random().toString(36).slice(2, 8)
+  return base ? `${base}-${suffix}` : suffix
+}
+
 type AuthResult = {
   user: { id: string; email: string; role: UserRole }
   accessToken: string
@@ -80,6 +91,12 @@ export class AuthService {
                 create: {
                   companyName: dto.companyName!,
                   contactPerson: dto.contactPerson,
+                  shop: {
+                    create: {
+                      name: dto.companyName!,
+                      slug: toSlug(dto.companyName!),
+                    },
+                  },
                 },
               }
             : undefined,
@@ -130,7 +147,7 @@ export class AuthService {
     return this.issueTokens(user.id, user.email!, user.role, res)
   }
 
-  async refresh(req: Request, res: Response): Promise<{ accessToken: string }> {
+  async refresh(req: Request): Promise<{ accessToken: string }> {
     const token = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE]
     if (!token) {
       throw new UnauthorizedException({

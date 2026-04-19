@@ -1,0 +1,88 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common'
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { UserRole } from '@prisma/client'
+import type { Request } from 'express'
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
+import { CreateProductDto } from './dto/create-product.dto'
+import { QueryProductDto } from './dto/query-product.dto'
+import { UpdateProductDto } from './dto/update-product.dto'
+import { ProductsService } from './products.service'
+
+@ApiTags('products')
+@Controller({ path: 'products', version: '1' })
+export class ProductsController {
+  constructor(private readonly productsService: ProductsService) {}
+
+  @Get()
+  @ApiOperation({ summary: '列出商品' })
+  async findAll(@Query() query: QueryProductDto): Promise<object> {
+    const { items, total, page, pageSize } = await this.productsService.findAll(query)
+    return {
+      success: true,
+      data: items,
+      pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    }
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: '取得商品詳情' })
+  async findById(@Param('id') id: string): Promise<object> {
+    const data = await this.productsService.findById(BigInt(id))
+    return { success: true, data }
+  }
+
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '建立商品（批發商）' })
+  async create(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() dto: CreateProductDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.productsService.create(BigInt(req.user.sub), dto)
+    return { success: true, data }
+  }
+
+  @Put(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '更新商品（批發商）' })
+  async update(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.productsService.update(BigInt(req.user.sub), BigInt(id), dto)
+    return { success: true, data }
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '刪除商品（軟刪除，批發商）' })
+  async remove(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+  ): Promise<void> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    await this.productsService.remove(BigInt(req.user.sub), BigInt(id))
+  }
+}

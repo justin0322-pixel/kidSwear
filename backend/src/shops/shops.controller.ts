@@ -1,0 +1,70 @@
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common'
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { UserRole } from '@prisma/client'
+import type { Request } from 'express'
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
+import { UpdateShopDto } from './dto/update-shop.dto'
+import { ShopsService } from './shops.service'
+
+@ApiTags('shops')
+@Controller({ path: 'shops', version: '1' })
+export class ShopsController {
+  constructor(private readonly shopsService: ShopsService) {}
+
+  @Get()
+  @ApiOperation({ summary: '列出所有商城' })
+  async findAll(
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '20',
+  ): Promise<object> {
+    const p = Math.max(1, parseInt(page, 10))
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize, 10)))
+    const { items, total } = await this.shopsService.findAll(p, ps)
+    return {
+      success: true,
+      data: items,
+      pagination: { page: p, pageSize: ps, total, totalPages: Math.ceil(total / ps) },
+    }
+  }
+
+  @Get('my')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '取得自己的商城（批發商）' })
+  async getMyShop(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.shopsService.findMyShop(BigInt(req.user.sub))
+    return { success: true, data }
+  }
+
+  @Put('my')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '更新商城資訊（批發商）' })
+  async updateMyShop(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() dto: UpdateShopDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.shopsService.updateMyShop(BigInt(req.user.sub), dto)
+    return { success: true, data }
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: '取得商城詳情' })
+  async findById(@Param('id') id: string): Promise<object> {
+    const data = await this.shopsService.findById(BigInt(id))
+    return { success: true, data }
+  }
+}
