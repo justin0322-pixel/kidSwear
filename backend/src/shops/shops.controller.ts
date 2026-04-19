@@ -14,13 +14,17 @@ import { UserRole } from '@prisma/client'
 import type { Request } from 'express'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
+import { TagsService } from '../tags/tags.service'
 import { UpdateShopDto } from './dto/update-shop.dto'
 import { ShopsService } from './shops.service'
 
 @ApiTags('shops')
 @Controller({ path: 'shops', version: '1' })
 export class ShopsController {
-  constructor(private readonly shopsService: ShopsService) {}
+  constructor(
+    private readonly shopsService: ShopsService,
+    private readonly tagsService: TagsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: '列出所有商城' })
@@ -58,6 +62,13 @@ export class ShopsController {
   ): Promise<object> {
     if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
     const data = await this.shopsService.updateMyShop(BigInt(req.user.sub), dto)
+    return { success: true, data }
+  }
+
+  @Get(':id/tags')
+  @ApiOperation({ summary: '列出商城標籤（含全域標籤）' })
+  async getShopTags(@Param('id') id: string): Promise<object> {
+    const data = await this.tagsService.findByShop(BigInt(id))
     return { success: true, data }
   }
 
