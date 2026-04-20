@@ -45,6 +45,15 @@ export class ShopsService {
     return this.format(shop)
   }
 
+  async findBySlug(slug: string): Promise<ReturnType<ShopsService['format']>> {
+    const shop = await this.prisma.shop.findFirst({
+      where: { slug, isActive: true, deletedAt: null },
+      select: SHOP_SELECT,
+    })
+    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
+    return this.format(shop)
+  }
+
   async findMyShop(userId: bigint): Promise<ReturnType<ShopsService['format']>> {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
@@ -76,6 +85,43 @@ export class ShopsService {
       select: SHOP_SELECT,
     })
     return this.format(updated)
+  }
+
+  async getMyStats(userId: bigint): Promise<{ todayOrders: number; monthRevenue: string; productCount: number }> {
+    const wholesaler = await this.prisma.wholesaler.findUnique({
+      where: { userId },
+      include: { shop: { select: { id: true } } },
+    })
+    if (!wholesaler || !wholesaler.shop) throw new ForbiddenException()
+
+    const shopId = wholesaler.shop.id
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const [todayOrders, monthRevenueResult, productCount] = await Promise.all([
+      this.prisma.order.count({
+        where: { shopId, createdAt: { gte: todayStart }, deletedAt: null },
+      }),
+      this.prisma.order.aggregate({
+        where: {
+          shopId,
+          createdAt: { gte: monthStart },
+          status: { in: ['paid', 'processing', 'shipped', 'completed'] },
+          deletedAt: null,
+        },
+        _sum: { total: true },
+      }),
+      this.prisma.product.count({
+        where: { shopId, deletedAt: null },
+      }),
+    ])
+
+    return {
+      todayOrders,
+      monthRevenue: (monthRevenueResult._sum.total ?? new Prisma.Decimal(0)).toString(),
+      productCount,
+    }
   }
 
   private format(shop: ShopRow) {

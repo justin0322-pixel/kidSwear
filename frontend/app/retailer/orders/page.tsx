@@ -1,0 +1,150 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useOrders, STATUS_LABEL, STATUS_COLOR, type OrderStatus } from '@/hooks/use-orders'
+import { Navbar } from '@/components/layout/Navbar'
+import { Button } from '@/components/ui/button'
+
+const STATUS_TABS = [
+  { value: '', label: '全部' },
+  { value: 'pending', label: '待付款' },
+  { value: 'paid', label: '已付款' },
+  { value: 'processing', label: '備貨中' },
+  { value: 'shipped', label: '已出貨' },
+  { value: 'completed', label: '已完成' },
+  { value: 'cancelled', label: '已取消' },
+]
+
+export default function RetailerOrdersPage() {
+  const router = useRouter()
+  const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+
+  const { data, isLoading, isError } = useOrders({ page, status })
+
+  const totalPages = data ? Math.ceil(data.total / data.pageSize) : 1
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+
+      <main className="p-6 max-w-2xl mx-auto space-y-4">
+        {/* 狀態篩選 */}
+        <div className="flex gap-2 flex-wrap">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => { setStatus(tab.value); setPage(1) }}
+              className={`px-4 py-1.5 rounded-full text-sm border transition-colors ${
+                status === tab.value
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-lg border">
+          {isLoading && (
+            <div className="p-6 space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-20 bg-gray-100 rounded animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {isError && (
+            <p className="text-center text-red-500 py-12">載入失敗，請重新整理頁面</p>
+          )}
+
+          {data && data.items.length === 0 && (
+            <div className="text-center py-16">
+              <p className="text-gray-400">
+                {status
+                  ? `目前沒有「${STATUS_LABEL[status as OrderStatus]}」的訂單`
+                  : '還沒有訂單，去逛逛吧！'}
+              </p>
+              {!status && (
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => router.push('/shops')}
+                >
+                  瀏覽商城
+                </Button>
+              )}
+            </div>
+          )}
+
+          {data && data.items.length > 0 && (
+            <div className="divide-y">
+              {data.items.map((order) => (
+                <button
+                  key={order.id}
+                  type="button"
+                  onClick={() => router.push(`/retailer/orders/${order.id}`)}
+                  className="w-full text-left px-6 py-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900 text-sm">
+                          {order.orderNumber}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[order.status]}`}
+                        >
+                          {STATUS_LABEL[order.status]}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{order.shop.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(order.createdAt).toLocaleDateString('zh-TW')} ·{' '}
+                        {order.itemCount} 件商品
+                      </p>
+                      {order.status === 'pending' && (
+                        <p className="text-xs text-amber-600 mt-1">請於 3 日內完成匯款</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-semibold text-gray-900">
+                        NT${Number(order.total).toLocaleString('zh-TW')}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">查看 →</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              上一頁
+            </Button>
+            <span className="text-sm text-gray-600">{page} / {totalPages}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              下一頁
+            </Button>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}

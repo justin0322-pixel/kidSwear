@@ -20,7 +20,17 @@ export class CartService {
     const variantIds = Object.keys(raw).map(BigInt)
     const variants = await this.prisma.productVariant.findMany({
       where: { id: { in: variantIds } },
-      include: { product: { select: { id: true, name: true, basePrice: true, shopId: true } } },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            basePrice: true,
+            shopId: true,
+            images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
+          },
+        },
+      },
     })
 
     const variantMap = new Map(variants.map((v) => [v.id.toString(), v]))
@@ -35,7 +45,9 @@ export class CartService {
       return {
         variantId,
         productId: v.product.id.toString(),
+        shopId: v.product.shopId.toString(),
         productName: v.product.name,
+        primaryImageUrl: v.product.images[0]?.url ?? null,
         sku: v.sku,
         size: v.size,
         color: v.color,

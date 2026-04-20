@@ -1,26 +1,40 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Post,
+  Put,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { UserRole } from '@prisma/client'
 import { AuthService } from './auth.service'
 import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 import { JwtPayload } from './interfaces/jwt-payload.interface'
+import { UsersService } from '../users/users.service'
+
+class UpdateProfileDto {
+  @IsOptional() @IsString() @MaxLength(100) shopName?: string
+  @IsOptional() @IsString() @MaxLength(50) contactPerson?: string
+  @IsOptional() @IsString() shippingAddress?: string
+}
 
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Post('register')
   @ApiOperation({ summary: '帳密註冊' })
@@ -67,6 +81,19 @@ export class AuthController {
   @ApiOperation({ summary: '取得當前使用者' })
   async getMe(@Req() req: Request & { user: JwtPayload }): Promise<object> {
     const data = await this.authService.me(req.user.sub)
+    return { success: true, data }
+  }
+
+  @Put('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '更新零售商個人資料' })
+  async updateProfile(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() dto: UpdateProfileDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.retailer) throw new ForbiddenException()
+    const data = await this.usersService.updateRetailerProfile(BigInt(req.user.sub), dto)
     return { success: true, data }
   }
 }

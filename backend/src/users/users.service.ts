@@ -29,4 +29,18 @@ export class UsersService {
       include: { wholesaler: true, retailer: true },
     })
   }
+
+  async updateRetailerProfile(
+    userId: bigint,
+    dto: { shopName?: string; contactPerson?: string; shippingAddress?: string },
+  ): Promise<Retailer> {
+    return this.prisma.retailer.update({
+      where: { userId },
+      data: {
+        ...(dto.shopName !== undefined && { shopName: dto.shopName }),
+        ...(dto.contactPerson !== undefined && { contactPerson: dto.contactPerson }),
+        ...(dto.shippingAddress !== undefined && { shippingAddress: dto.shippingAddress }),
+      },
+    })
+  }
 }

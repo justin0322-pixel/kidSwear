@@ -52,6 +52,16 @@ export class ShopsController {
     return { success: true, data }
   }
 
+  @Get('my/stats')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '取得商城統計數據（批發商）' })
+  async getMyStats(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.shopsService.getMyStats(BigInt(req.user.sub))
+    return { success: true, data }
+  }
+
   @Put('my')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -62,6 +72,13 @@ export class ShopsController {
   ): Promise<object> {
     if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
     const data = await this.shopsService.updateMyShop(BigInt(req.user.sub), dto)
+    return { success: true, data }
+  }
+
+  @Get('slug/:slug')
+  @ApiOperation({ summary: '以 slug 取得商城詳情' })
+  async findBySlug(@Param('slug') slug: string): Promise<object> {
+    const data = await this.shopsService.findBySlug(slug)
     return { success: true, data }
   }
 
