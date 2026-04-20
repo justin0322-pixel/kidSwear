@@ -1,6 +1,6 @@
-# 童裝訂單系統 (Kidswear Platform)
+# 童裝訂單系統 (Kidswear B2B Platform)
 
-> 整合式童裝訂單平台，以 AI 推薦系統為核心亮點。
+> B2B 童裝訂單平台，以 **三層 AI 推薦系統**為核心亮點。
 > 解決童裝批發商與零售商之間下單效率低落的問題。
 
 [![Tech Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20NestJS%20%7C%20FastAPI-blue)]()
@@ -11,55 +11,54 @@
 
 ## ✨ 核心特色
 
-### 🎯 訂單平台
-- 批發商開設專屬商城、管理商品與訂單
-- 零售商線上瀏覽、下單、追蹤出貨
-- 訂單狀態機、歷史快照、完整稽核
+### 🎯 B2B 訂單平台
+- 批發商開設專屬商城、管理商品變體（SKU）與訂單
+- 零售商線上瀏覽商城、加入購物車、結帳下單、追蹤出貨
+- 訂單狀態機（pending → paid → processing → shipped → completed）含完整稽核
 
 ### 🤖 三層 AI 推薦系統
-1. **SVD 矩陣分解** — 傳統協同過濾
-2. **CLIP 視覺搜尋** — 跨商城以圖搜圖、以文搜圖
-3. **Claude LLM** — 自然語言推薦解釋，解決黑箱問題
+1. **SVD 矩陣分解** — 從訂單歷史學習偏好，個人化推薦；冷啟動自動降級為熱門商品
+2. **CLIP 視覺搜尋** — 以文字或圖片跨商城搜尋相似商品（ViT-B/32，512 維向量 + pgvector HNSW）
+3. **Claude LLM** — 自然語言推薦解釋，解決 AI 黑箱問題（規劃中）
 
-### 🔐 雙軌制身份認證
-- LINE OAuth（契合台灣市場）
-- Google OAuth
-- 帳密登入（保底方案）
-- JWT + Refresh Token 架構
+### 🔐 身份認證
+- 帳密登入（bcrypt + JWT RS256）
+- LINE / Google OAuth（規劃中）
+- Access Token 15 分鐘 + Refresh Token 30 天（httpOnly Cookie）
 
 ### 🐳 容器化部署
-- Docker Compose 一鍵啟動所有服務
-- 支援本機開發、測試、正式三環境
-- pgvector 官方映像檔，免去安裝踩坑
+- Docker Compose 一鍵啟動所有服務（PostgreSQL、Redis、NestJS、FastAPI、Next.js）
+- pgvector 官方映像檔，HNSW 向量索引開箱即用
 
 ---
 
 ## 🏗️ 技術堆疊
 
 ### Frontend
-- **Next.js 14** (App Router)
-- **TypeScript**
-- **Tailwind CSS** + shadcn/ui
-- **Zustand** + **TanStack Query**
-- **React Hook Form** + **Zod**
+- **Next.js 14** (App Router, Server + Client Components)
+- **TypeScript** (strict mode)
+- **Tailwind CSS** + **shadcn/ui**
+- **TanStack Query** (server state) + **Zustand** (client state)
+- **React Hook Form** + **Zod** (form validation)
 
-### Backend
-- **NestJS** (主 API)
-- **FastAPI** (AI 推薦微服務)
-- **Prisma ORM**
-- **Passport.js** (認證)
-- **Celery** (排程任務)
+### Backend (主 API)
+- **NestJS** + **TypeScript**
+- **Prisma ORM** (PostgreSQL)
+- **Passport.js** + **JWT**
+- **Redis** (購物車快取)
+- **class-validator** (DTO 驗證)
+
+### Recommender (AI 微服務)
+- **FastAPI** + **Python 3.11**
+- **OpenAI CLIP** ViT-B/32（以圖搜圖 / 以文搜圖）
+- **scikit-surprise** SVD（協同過濾）
+- **SQLAlchemy** + **pgvector**（向量搜尋）
+- **Anthropic Claude** Haiku（推薦解釋，規劃中）
 
 ### Database & Infra
-- **PostgreSQL 16** + **pgvector**
-- **Redis 7**
-- **Cloudflare R2** (圖片儲存)
+- **PostgreSQL 16** + **pgvector**（向量索引 HNSW）
+- **Redis 7**（購物車、快取）
 - **Docker** + **Docker Compose**
-
-### AI & ML
-- **scikit-surprise** (SVD)
-- **OpenAI CLIP** (ViT-B/32)
-- **Anthropic Claude** (Haiku)
 
 ---
 
@@ -68,22 +67,21 @@
 ### 前置需求
 
 - Docker Desktop 或 OrbStack
-- Node.js 20+ 和 pnpm
-- Python 3.11+（若要在本機跑 recommender）
-- PostgreSQL 16（若不用 Docker）
+- Node.js 20+ 與 pnpm
+- Python 3.11+（本機執行 recommender 時）
 
-### 安裝與啟動
+### 一鍵啟動（Docker）
 
 ```bash
 # 1. Clone 專案
-git clone https://github.com/<your-username>/kidswear-b2b.git
-cd kidswear-b2b
+git clone https://github.com/justin0322/kidSwear.git
+cd kidSwear
 
-# 2. 複製環境變數範本
+# 2. 複製環境變數
 cp .env.example .env
-# 編輯 .env，填入 LINE_CHANNEL_ID、ANTHROPIC_API_KEY 等
+# 編輯 .env，填入必要設定
 
-# 3. 啟動所有服務（Docker）
+# 3. 啟動所有服務
 docker compose up -d
 
 # 4. 初始化資料庫
@@ -94,21 +92,60 @@ docker compose exec backend npx prisma db seed
 open http://localhost:3000
 ```
 
-### 本機開發（不用 Docker）
+### 本機開發
 
 ```bash
 # 只啟動基礎設施
 docker compose up -d postgres redis
 
-# Frontend
+# Frontend (port 3000)
 cd frontend && pnpm install && pnpm dev
 
-# Backend (另一個 terminal)
+# Backend (port 4000)
 cd backend && pnpm install && pnpm start:dev
 
-# Recommender (另一個 terminal)
-cd recommender && pip install -r requirements.txt && uvicorn app.main:app --reload
+# Recommender (port 8000)
+cd recommender && pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
+
+---
+
+## 📐 系統架構
+
+```
+Browser
+  └── Next.js (3000)
+        └── NestJS API (4000)
+              ├── PostgreSQL (5432) + pgvector
+              ├── Redis (6379)
+              └── FastAPI Recommender (8000)
+                    └── PostgreSQL (共用)
+```
+
+### 頁面總覽
+
+| 角色 | 路由 | 功能 |
+|------|------|------|
+| 公開 | `/` | 首頁 |
+| 公開 | `/shops` | 商城列表 |
+| 公開 | `/shops/:slug` | 單一商城與商品 |
+| 公開 | `/products/:id` | 商品詳情、加入購物車 |
+| 零售商 | `/retailer/home` | 個人化推薦首頁 |
+| 零售商 | `/retailer/search` | 以文 / 以圖搜尋商品 |
+| 零售商 | `/retailer/cart` | 購物車 |
+| 零售商 | `/retailer/checkout` | 結帳 |
+| 零售商 | `/retailer/orders` | 訂單列表 |
+| 零售商 | `/retailer/orders/:id` | 訂單詳情與追蹤 |
+| 零售商 | `/retailer/profile` | 個人資料 |
+| 批發商 | `/wholesaler/dashboard` | 儀表板（今日訂單 / 月營收 / 商品數） |
+| 批發商 | `/wholesaler/products` | 商品管理 |
+| 批發商 | `/wholesaler/products/new` | 新增商品 |
+| 批發商 | `/wholesaler/products/:id/edit` | 編輯商品 |
+| 批發商 | `/wholesaler/orders` | 訂單管理 |
+| 批發商 | `/wholesaler/orders/:id` | 訂單處理與狀態變更 |
+| 批發商 | `/wholesaler/shop` | 商城設定 |
+| 批發商 | `/wholesaler/tags` | 標籤管理 |
 
 ---
 
@@ -127,102 +164,55 @@ cd recommender && pip install -r requirements.txt && uvicorn app.main:app --relo
 ## 🧪 測試
 
 ```bash
-# 單元測試
+# 後端單元測試
 cd backend && pnpm test
 
-# E2E 測試
+# 後端 E2E 測試
 cd backend && pnpm test:e2e
 
 # 覆蓋率
 cd backend && pnpm test:cov
-
-# Frontend 測試
-cd frontend && pnpm test
 ```
 
 ---
 
-## 📦 部署
+## 🛣️ 開發進度
 
-### 前端（Vercel）
+### ✅ 已完成
+- 基礎設施（Docker、PostgreSQL + pgvector、Redis）
+- 身份認證（JWT + 帳密登入、Refresh Token）
+- 商品 CRUD（含 SKU 變體、標籤、圖片）
+- 訂單流程（購物車 → 結帳 → 狀態機）
+- 批發商：儀表板真實統計、商品管理、訂單管理、商城設定、標籤管理
+- 零售商：首頁推薦、購物車、結帳、訂單追蹤、個人資料
+- **AI 推薦：SVD 協同過濾**（個人化推薦，冷啟動降級）
+- **AI 搜尋：CLIP 視覺搜尋**（以文搜圖、以圖搜圖）
+- 全域 Navbar（角色自適應、購物車徽章）
 
-```bash
-cd frontend
-vercel deploy --prod
-```
+### 🔄 進行中 / 規劃中
+- Claude LLM 推薦解釋
+- 批發商數據分析頁（熱銷商品、零售商偏好）
+- LINE / Google OAuth 登入
+- 新用戶 Onboarding 流程
+- 商品圖片上傳（目前為 URL 輸入）
 
-### 後端（Railway / Fly.io）
-
-支援 Docker image 直接部署：
-
-```bash
-# Railway
-railway up
-
-# Fly.io
-fly deploy
-```
-
-### CI/CD
-
-已設定 GitHub Actions，push 到 `main` 自動：
-1. 執行所有測試
-2. 建置 Docker image
-3. 推送到 container registry
-4. 部署到正式環境
+### 📋 未來版本
+- 金流整合（綠界 / 藍新）
+- 物流整合（黑貓 / 新竹）
+- 電子發票
+- 管理員後台
 
 ---
 
 ## 🎯 專案亮點
 
-### 技術深度
+**AI 架構深度**：三層推薦系統從傳統 ML（SVD）到深度學習（CLIP）到 LLM，反映業界演進。
 
-- **AI 推薦系統**: 三層架構，從傳統 ML 到 LLM
-- **向量資料庫**: pgvector + HNSW 索引，跨商城視覺搜尋
-- **離線訓練 + 線上服務**: 業界標準架構，響應 < 50ms
-- **OAuth 2.0**: 完整 Authorization Code Flow 實作
+**向量搜尋實作**：pgvector + HNSW 索引，512 維 CLIP 向量 cosine 相似度搜尋，支援跨商城以圖搜圖。
 
-### 架構能力
+**微服務設計**：主業務（NestJS）與 AI 推薦（FastAPI）分離，各自獨立擴展。
 
-- **微服務**: 主業務（NestJS）與推薦服務（FastAPI）分離
-- **容器化**: 6 個服務 Docker Compose 編排
-- **資料庫設計**: 表繼承、SKU 變體、歷史快照、OAuth 帳號綁定
-- **狀態機**: 訂單狀態流轉含稽核
-
-### 業務理解
-
-- **目標市場清晰**: 台灣童裝 B2B，LINE 登入契合使用習慣
-- **核心痛點**: 降低下單成本、整合訂單、個人化推薦
-- **AI 應用合理**: 視覺搜尋契合童裝視覺導向特性
-
----
-
-## 🛣️ 開發路線圖
-
-### v1.0 MVP（當前階段）
-- [x] 專案規格與架構設計
-- [ ] 基礎設施（Docker、DB、Redis）
-- [ ] 身份認證（JWT + 帳密）
-- [ ] 商品 CRUD
-- [ ] 訂單基本流程
-
-### v1.1 核心功能
-- [ ] LINE 登入整合
-- [ ] 購物車與結帳
-- [ ] 訂單狀態機
-- [ ] 批發商數據分析
-
-### v1.2 AI 推薦
-- [ ] SVD 矩陣分解
-- [ ] CLIP 圖像向量
-- [ ] 以圖搜圖、以文搜圖
-- [ ] Claude LLM 推薦解釋
-
-### v2.0 進階功能
-- [ ] 金流整合（綠界/藍新）
-- [ ] 物流整合（黑貓/新竹）
-- [ ] 電子發票
-- [ ] 2FA 兩因素認證
+**資料庫設計**：表繼承、SKU 變體、歷史快照、訂單狀態機，貼近真實電商業務需求。
 
 ---
 
@@ -236,4 +226,4 @@ MIT License
 
 本專案為求職作品集，展示全端 + AI + DevOps 綜合能力。
 
-歡迎透過 issue 交流討論！
+歡迎透過 [issue](https://github.com/justin0322/kidSwear/issues) 交流討論！

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import {
   useOrder,
   useUpdateOrderStatus,
@@ -15,7 +15,6 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
 export default function WholesalerOrderDetailPage() {
-  const router = useRouter()
   const params = useParams()
   const orderId = Number(params.id)
 

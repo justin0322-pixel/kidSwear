@@ -101,14 +101,13 @@ export class ShopsService {
 
     const [todayOrders, monthRevenueResult, productCount] = await Promise.all([
       this.prisma.order.count({
-        where: { shopId, createdAt: { gte: todayStart }, deletedAt: null },
+        where: { shopId, createdAt: { gte: todayStart } },
       }),
       this.prisma.order.aggregate({
         where: {
           shopId,
           createdAt: { gte: monthStart },
           status: { in: ['paid', 'processing', 'shipped', 'completed'] },
-          deletedAt: null,
         },
         _sum: { total: true },
       }),
@@ -119,8 +118,96 @@ export class ShopsService {
 
     return {
       todayOrders,
-      monthRevenue: (monthRevenueResult._sum.total ?? new Prisma.Decimal(0)).toString(),
+      monthRevenue: (monthRevenueResult._sum?.total ?? new Prisma.Decimal(0)).toString(),
       productCount,
+    }
+  }
+
+  async getAnalytics(userId: bigint) {
+    const wholesaler = await this.prisma.wholesaler.findUnique({
+      where: { userId },
+      include: { shop: { select: { id: true } } },
+    })
+    if (!wholesaler?.shop) throw new ForbiddenException()
+
+    const shopId = wholesaler.shop.id
+
+    type RevenueRow = { date: Date; revenue: string; order_count: bigint }
+    type TopProductRow = { id: string; name: string; order_count: bigint; total_quantity: bigint; revenue: string }
+    type TopRetailerRow = { id: string; shop_name: string; order_count: bigint; total_amount: string }
+
+    const [revenueByDay, topProducts, topRetailers, statusGroups] = await Promise.all([
+      this.prisma.$queryRaw<RevenueRow[]>(Prisma.sql`
+        SELECT DATE(created_at) AS date,
+               SUM(total)::text AS revenue,
+               COUNT(*)        AS order_count
+        FROM   orders
+        WHERE  shop_id = ${shopId}
+          AND  status NOT IN ('cancelled','refunded')
+          AND  created_at >= NOW() - INTERVAL '30 days'
+        GROUP  BY DATE(created_at)
+        ORDER  BY date
+      `),
+      this.prisma.$queryRaw<TopProductRow[]>(Prisma.sql`
+        SELECT p.id::text,
+               p.name,
+               COUNT(DISTINCT oi.order_id) AS order_count,
+               SUM(oi.quantity)            AS total_quantity,
+               SUM(oi.subtotal)::text      AS revenue
+        FROM   order_items oi
+        JOIN   product_variants pv ON pv.id  = oi.variant_id
+        JOIN   products p          ON p.id   = pv.product_id
+        JOIN   orders   o          ON o.id   = oi.order_id
+        WHERE  p.shop_id = ${shopId}
+          AND  o.status NOT IN ('cancelled','refunded')
+          AND  o.created_at >= NOW() - INTERVAL '30 days'
+        GROUP  BY p.id, p.name
+        ORDER  BY order_count DESC
+        LIMIT  5
+      `),
+      this.prisma.$queryRaw<TopRetailerRow[]>(Prisma.sql`
+        SELECT r.id::text,
+               r.shop_name,
+               COUNT(DISTINCT o.id) AS order_count,
+               SUM(o.total)::text   AS total_amount
+        FROM   orders o
+        JOIN   retailers r ON r.id = o.retailer_id
+        WHERE  o.shop_id = ${shopId}
+          AND  o.status NOT IN ('cancelled','refunded')
+          AND  o.created_at >= NOW() - INTERVAL '30 days'
+        GROUP  BY r.id, r.shop_name
+        ORDER  BY SUM(o.total) DESC
+        LIMIT  5
+      `),
+      this.prisma.order.groupBy({
+        by: ['status'],
+        where: { shopId },
+        _count: { status: true },
+      }),
+    ])
+
+    return {
+      revenueByDay: revenueByDay.map((r) => ({
+        date: r.date.toISOString().slice(0, 10),
+        revenue: r.revenue,
+        orderCount: Number(r.order_count),
+      })),
+      topProducts: topProducts.map((p) => ({
+        id: p.id,
+        name: p.name,
+        orderCount: Number(p.order_count),
+        totalQuantity: Number(p.total_quantity),
+        revenue: p.revenue,
+      })),
+      topRetailers: topRetailers.map((r) => ({
+        id: r.id,
+        shopName: r.shop_name,
+        orderCount: Number(r.order_count),
+        totalAmount: r.total_amount,
+      })),
+      orderStatusCounts: Object.fromEntries(
+        statusGroups.map((g) => [g.status, g._count.status]),
+      ),
     }
   }
 

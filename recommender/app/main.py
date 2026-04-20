@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import search, recommendations
+
 app = FastAPI(
     title="Kidswear Recommender",
     description="童裝推薦微服務：SVD 協同過濾、CLIP 視覺搜尋、Claude LLM 解釋",
@@ -15,6 +17,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(search.router)
+app.include_router(recommendations.router)
 
 
 @app.get("/health", tags=["health"])

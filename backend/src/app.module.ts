@@ -11,6 +11,7 @@ import { TagsModule } from './tags/tags.module';
 import { ProductsModule } from './products/products.module';
 import { ShopsModule } from './shops/shops.module';
 import { UsersModule } from './users/users.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     TagsModule,
     RedisModule,
     CartModule,
+    RecommendationsModule,
   ],
 })
 export class AppModule {}

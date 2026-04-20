@@ -62,6 +62,16 @@ export class ShopsController {
     return { success: true, data }
   }
 
+  @Get('my/analytics')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '取得商城數據分析（批發商，過去 30 天）' })
+  async getMyAnalytics(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.shopsService.getAnalytics(BigInt(req.user.sub))
+    return { success: true, data }
+  }
+
   @Put('my')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

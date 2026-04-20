@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -31,7 +30,6 @@ const PRESET_COLORS = [
 ]
 
 export default function WholesalerTagsPage() {
-  const router = useRouter()
   const { data: shop } = useMyShop()
   const { data: tags, isLoading } = useShopTags(shop?.id)
   const { mutate: createTag, isPending: creating } = useCreateTag()

@@ -1,10 +1,28 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { useCart } from '@/hooks/use-cart'
 import { useOrders } from '@/hooks/use-orders'
 import { useShops } from '@/hooks/use-shops'
 import { Navbar } from '@/components/layout/Navbar'
+import { api } from '@/lib/api'
+import type { SearchResultItem } from '@/hooks/use-search'
+
+type ForYouResponse = { items: SearchResultItem[]; total: number; source: string }
+
+function useForYou(limit = 8) {
+  return useQuery({
+    queryKey: ['for-you'],
+    queryFn: async () => {
+      const res = await api.get<{ data: ForYouResponse }>('/recommendations/for-you', {
+        params: { limit },
+      })
+      return res.data.data
+    },
+  })
+}
 
 const QUICK_LINKS = [
   { label: '瀏覽商城', icon: '🏪', href: '/shops' },
@@ -18,6 +36,7 @@ export default function RetailerHome() {
   const { data: cart } = useCart()
   const { data: orders } = useOrders({ status: 'pending' })
   const { data: shopsData } = useShops({ page: 1 })
+  const { data: forYou, isLoading: recLoading } = useForYou(8)
 
   const cartCount = cart?.items.reduce((sum, i) => sum + i.quantity, 0) ?? 0
   const pendingOrderCount = orders?.total ?? 0
@@ -67,30 +86,64 @@ export default function RetailerHome() {
           </div>
         </div>
 
-        {/* 推薦商品佔位（AI 推薦開發中）*/}
+        {/* 為您推薦 */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-gray-500">為您推薦</h2>
-            <span className="text-xs text-gray-300 bg-gray-100 px-2 py-0.5 rounded-full">
-              AI 推薦即將上線
-            </span>
+            {forYou && (
+              <span className="text-xs text-gray-400">
+                {forYou.source === 'svd' ? 'AI 個人化' : '熱門商品'}
+              </span>
+            )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[...Array(4)].map((_, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-lg border overflow-hidden"
-              >
-                <div className="aspect-square bg-gray-100 flex items-center justify-center text-gray-200 text-3xl">
-                  👕
+
+          {recLoading && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-white rounded-lg border overflow-hidden">
+                  <div className="aspect-square bg-gray-100 animate-pulse" />
+                  <div className="p-2 space-y-1">
+                    <div className="h-3 bg-gray-100 rounded animate-pulse w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded animate-pulse w-1/2" />
+                  </div>
                 </div>
-                <div className="p-2 space-y-1">
-                  <div className="h-3 bg-gray-100 rounded w-3/4" />
-                  <div className="h-3 bg-gray-100 rounded w-1/2" />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {forYou && forYou.items.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {forYou.items.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/products/${item.id}`}
+                  className="bg-white rounded-lg border overflow-hidden hover:shadow-sm transition-shadow group"
+                >
+                  <div className="aspect-square bg-gray-100 overflow-hidden">
+                    {item.primary_image_url ? (
+                      <img
+                        src={item.primary_image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-sm">無圖</div>
+                    )}
+                  </div>
+                  <div className="p-2 space-y-1">
+                    <p className="text-xs text-gray-400 truncate">{item.shop.name}</p>
+                    <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">{item.name}</p>
+                    <p className="text-xs text-gray-600">NT${Number(item.base_price).toLocaleString('zh-TW')}</p>
+                    {item.reason && (
+                      <p className="text-xs text-blue-500 leading-snug line-clamp-2 pt-0.5 border-t border-gray-50">
+                        {item.reason}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 熱門商城 */}

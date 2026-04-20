@@ -7,6 +7,7 @@ import { useShopStats } from '@/hooks/use-shop'
 const NAV_ITEMS = [
   { label: '商品管理', desc: '新增、編輯、刪除商品', href: '/wholesaler/products', icon: '📦' },
   { label: '訂單管理', desc: '處理訂單、更新出貨狀態', href: '/wholesaler/orders', icon: '📋' },
+  { label: '數據分析', desc: '營收趨勢、熱銷商品', href: '/wholesaler/analytics', icon: '📊' },
   { label: '商城設定', desc: '名稱、介紹、Logo', href: '/wholesaler/shop', icon: '🏪' },
   { label: '標籤管理', desc: '管理商品分類標籤', href: '/wholesaler/tags', icon: '🏷️' },
 ]
