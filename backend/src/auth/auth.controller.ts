@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -82,6 +83,34 @@ export class AuthController {
   async getMe(@Req() req: Request & { user: JwtPayload }): Promise<object> {
     const data = await this.authService.me(req.user.sub)
     return { success: true, data }
+  }
+
+  @Get('line')
+  @ApiOperation({ summary: 'LINE OAuth 授權跳轉' })
+  lineLogin(@Res() res: Response): void {
+    const state = Math.random().toString(36).slice(2)
+    res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000 })
+    res.redirect(this.authService.getLineAuthUrl(state))
+  }
+
+  @Get('line/callback')
+  @ApiOperation({ summary: 'LINE OAuth 回呼處理' })
+  async lineCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const cookieState = (req.cookies as Record<string, string | undefined>)['oauth_state']
+    res.clearCookie('oauth_state')
+    if (!code || state !== cookieState) {
+      res.redirect(
+        `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/login?error=oauth_failed`,
+      )
+      return
+    }
+    const { redirectUrl } = await this.authService.lineOAuthExchange(code, res)
+    res.redirect(redirectUrl)
   }
 
   @Put('profile')

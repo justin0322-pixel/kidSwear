@@ -2,11 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
-import { UserRole, UserStatus } from '@prisma/client'
+import { OauthProvider, UserRole, UserStatus } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../prisma/prisma.service'
@@ -197,6 +198,112 @@ export class AuthService {
       email: user.email,
       role: user.role,
       profile,
+    }
+  }
+
+  getLineAuthUrl(state: string): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: this.config.getOrThrow<string>('LINE_CHANNEL_ID'),
+      redirect_uri: this.config.getOrThrow<string>('LINE_CALLBACK_URL'),
+      state,
+      scope: 'profile openid email',
+    })
+    return `https://access.line.me/oauth2/v2.1/authorize?${params}`
+  }
+
+  async lineOAuthExchange(code: string, res: Response): Promise<{ redirectUrl: string }> {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000')
+
+    // Exchange code for LINE tokens
+    const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.config.getOrThrow<string>('LINE_CALLBACK_URL'),
+        client_id: this.config.getOrThrow<string>('LINE_CHANNEL_ID'),
+        client_secret: this.config.getOrThrow<string>('LINE_CHANNEL_SECRET'),
+      }),
+    })
+
+    if (!tokenRes.ok) {
+      throw new InternalServerErrorException('LINE 授權失敗')
+    }
+
+    type LineTokenResponse = { access_token: string; id_token?: string }
+    const tokenData = (await tokenRes.json()) as LineTokenResponse
+
+    // Get LINE profile
+    const profileRes = await fetch('https://api.line.me/v2/profile', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    })
+    if (!profileRes.ok) throw new InternalServerErrorException('無法取得 LINE 使用者資料')
+
+    type LineProfile = { userId: string; displayName: string; pictureUrl?: string }
+    const lineProfile = (await profileRes.json()) as LineProfile
+
+    // Extract email from id_token if present
+    let email: string | undefined
+    if (tokenData.id_token) {
+      try {
+        const payload = JSON.parse(
+          Buffer.from(tokenData.id_token.split('.')[1], 'base64url').toString(),
+        ) as { email?: string }
+        email = payload.email
+      } catch {
+        // id_token decode failed — proceed without email
+      }
+    }
+
+    // Find existing OAuth binding
+    const existing = await this.prisma.userOauthAccount.findFirst({
+      where: { provider: OauthProvider.line, providerUserId: lineProfile.userId },
+      include: { user: true },
+    })
+
+    if (existing) {
+      // Update stored tokens
+      await this.prisma.userOauthAccount.update({
+        where: { id: existing.id },
+        data: { accessToken: tokenData.access_token },
+      })
+      const { accessToken } = this.issueTokens(existing.user.id, existing.user.email!, existing.user.role, res)
+      const role = existing.user.role
+      const dest = role === UserRole.wholesaler ? '/wholesaler/dashboard' : '/retailer/home'
+      return { redirectUrl: `${frontendUrl}/auth/callback?token=${accessToken}&role=${role}&redirect=${encodeURIComponent(dest)}` }
+    }
+
+    // New LINE user — create account (retailer by default, will onboard)
+    const user = await this.prisma.user.create({
+      data: {
+        email: email ?? null,
+        role: UserRole.retailer,
+        status: UserStatus.active,
+        retailer: {
+          create: {
+            shopName: lineProfile.displayName,
+            contactPerson: lineProfile.displayName,
+            shippingAddress: '',
+          },
+        },
+        oauthAccounts: {
+          create: {
+            provider: OauthProvider.line,
+            providerUserId: lineProfile.userId,
+            providerEmail: email,
+            providerName: lineProfile.displayName,
+            providerAvatar: lineProfile.pictureUrl,
+            accessToken: tokenData.access_token,
+          },
+        },
+      },
+    })
+
+    const { accessToken } = this.issueTokens(user.id, email ?? '', UserRole.retailer, res)
+    return {
+      redirectUrl: `${frontendUrl}/auth/callback?token=${accessToken}&role=retailer&redirect=${encodeURIComponent('/retailer/onboarding')}&new=1`,
     }
   }
 
