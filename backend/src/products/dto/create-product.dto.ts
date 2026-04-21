@@ -12,6 +12,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   Min,
   ValidateNested,
@@ -93,6 +94,12 @@ export class CreateProductDto {
   @IsArray()
   @IsNumber({}, { each: true })
   tags?: number[]
+
+  @ApiPropertyOptional({ example: ['https://cdn.example.com/img.jpg'] })
+  @IsOptional()
+  @IsArray()
+  @IsUrl({}, { each: true })
+  imageUrls?: string[]
 
   @ApiProperty({ type: [CreateVariantDto] })
   @IsArray()

@@ -1,4 +1,5 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { Prisma, ProductStatus } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateProductDto } from './dto/create-product.dto'
@@ -7,7 +8,25 @@ import { UpdateProductDto } from './dto/update-product.dto'
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ProductsService.name)
+  private readonly recommenderUrl: string
+
+  constructor(
+    private readonly prisma: PrismaService,
+    config: ConfigService,
+  ) {
+    this.recommenderUrl = config.get<string>('RECOMMENDER_URL') ?? 'http://localhost:8000'
+  }
+
+  private triggerEmbedTask(productId: bigint): void {
+    fetch(`${this.recommenderUrl}/tasks/embed-product`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: Number(productId) }),
+    }).catch((err: unknown) => {
+      this.logger.warn(`embed-product task trigger failed for product ${productId}: ${String(err)}`)
+    })
+  }
 
   async findAll(query: QueryProductDto) {
     const page = Math.max(1, parseInt(query.page ?? '1', 10))
@@ -148,8 +167,23 @@ export class ProductsService {
         })
       }
 
+      if (dto.imageUrls?.length) {
+        await tx.productImage.createMany({
+          data: dto.imageUrls.map((url, i) => ({
+            productId: product.id,
+            url,
+            sortOrder: i,
+            isPrimary: i === 0,
+          })),
+        })
+      }
+
       return product.id
     })
+
+    if (dto.imageUrls?.length) {
+      this.triggerEmbedTask(productId)
+    }
 
     return this.findById(productId)
   }
@@ -183,7 +217,25 @@ export class ProductsService {
           })
         }
       }
+
+      if (dto.imageUrls !== undefined) {
+        await tx.productImage.deleteMany({ where: { productId } })
+        if (dto.imageUrls.length > 0) {
+          await tx.productImage.createMany({
+            data: dto.imageUrls.map((url, i) => ({
+              productId,
+              url,
+              sortOrder: i,
+              isPrimary: i === 0,
+            })),
+          })
+        }
+      }
     })
+
+    if (dto.imageUrls?.length) {
+      this.triggerEmbedTask(productId)
+    }
 
     return this.findById(productId)
   }
