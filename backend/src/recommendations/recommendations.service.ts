@@ -17,6 +17,13 @@ export type SearchResponse = {
   total: number
 }
 
+export type TagSuggestion = {
+  id: string
+  name: string
+  color: string | null
+  freq: number
+}
+
 @Injectable()
 export class RecommendationsService {
   private readonly recommenderUrl: string
@@ -67,5 +74,18 @@ export class RecommendationsService {
     })
     if (!res.ok) throw new InternalServerErrorException('推薦服務錯誤')
     return res.json() as Promise<SearchResponse>
+  }
+
+  async suggestTags(buffer: Buffer, mimetype: string, filename: string): Promise<TagSuggestion[]> {
+    const formData = new FormData()
+    formData.append('file', new Blob([new Uint8Array(buffer)], { type: mimetype }), filename)
+
+    const res = await fetch(`${this.recommenderUrl}/tags/suggest`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) throw new InternalServerErrorException('推薦服務錯誤')
+    const body = (await res.json()) as { tags: TagSuggestion[] }
+    return body.tags
   }
 }

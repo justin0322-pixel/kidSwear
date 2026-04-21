@@ -6,12 +6,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useCreateProduct, useShopTags } from '@/hooks/use-products'
 import { useMyShop } from '@/hooks/use-shop'
+import { useSuggestTags } from '@/hooks/use-tag-suggest'
 import { Navbar } from '@/components/layout/Navbar'
 import { VariantEditor } from '@/components/wholesaler/VariantEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 const schema = z.object({
   name: z.string().min(1, '請填寫商品名稱'),
@@ -51,6 +52,9 @@ export default function NewProductPage() {
   const { data: myShop } = useMyShop()
   const { mutate: createProduct, isPending, error } = useCreateProduct()
   const [selectedTags, setSelectedTags] = useState<number[]>([])
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { mutate: suggestTags, isPending: isSuggesting, data: suggestedTags } = useSuggestTags()
 
   const methods = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -78,6 +82,22 @@ export default function NewProductPage() {
     setSelectedTags((prev) =>
       prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id],
     )
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImagePreview(URL.createObjectURL(file))
+    suggestTags(file)
+  }
+
+  const applyAllSuggested = () => {
+    if (!suggestedTags || !tags) return
+    const shopTagIds = new Set(tags.map((t) => String(t.id)))
+    const matchingIds = suggestedTags
+      .filter((s) => shopTagIds.has(s.id))
+      .map((s) => Number(s.id))
+    setSelectedTags((prev) => Array.from(new Set([...prev, ...matchingIds])))
   }
 
   const onSubmit = (values: FormValues) => {
@@ -209,10 +229,85 @@ export default function NewProductPage() {
               </div>
             </section>
 
+            {/* AI 標籤建議 */}
+            <section className="bg-white rounded-lg border p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900">AI 標籤建議</h2>
+                <span className="text-xs text-gray-400">上傳商品圖片，AI 自動推薦標籤</span>
+              </div>
+
+              <div
+                className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {imagePreview ? (
+                  <img src={imagePreview} alt="預覽" className="mx-auto h-32 object-contain rounded" />
+                ) : (
+                  <div className="space-y-1 py-4">
+                    <p className="text-sm text-gray-500">點擊上傳商品圖片</p>
+                    <p className="text-xs text-gray-400">支援 JPG、PNG，最大 10MB</p>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageChange}
+                />
+              </div>
+
+              {isSuggesting && (
+                <p className="text-xs text-gray-500 animate-pulse">AI 分析中，請稍候...</p>
+              )}
+
+              {suggestedTags && suggestedTags.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500">建議標籤（依相似度排序）</p>
+                    <button
+                      type="button"
+                      onClick={applyAllSuggested}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      全部套用
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedTags.map((tag) => {
+                      const shopTag = tags?.find((t) => String(t.id) === tag.id)
+                      if (!shopTag) return null
+                      const isSelected = selectedTags.includes(shopTag.id)
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => toggleTag(shopTag.id)}
+                          className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                            isSelected
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                          }`}
+                          style={
+                            tag.color && !isSelected
+                              ? { borderColor: tag.color + '66', color: tag.color }
+                              : undefined
+                          }
+                        >
+                          {tag.name}
+                          <span className="ml-1 opacity-50 text-xs">×{tag.freq}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </section>
+
             {/* 標籤 */}
             {tags && tags.length > 0 && (
               <section className="bg-white rounded-lg border p-6 space-y-3">
-                <h2 className="font-semibold text-gray-900">標籤</h2>
+                <h2 className="font-semibold text-gray-900">全部標籤</h2>
                 <div className="flex flex-wrap gap-2">
                   {tags.map((tag) => (
                     <button

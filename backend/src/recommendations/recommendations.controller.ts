@@ -19,7 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 import { Type } from 'class-transformer'
-import { RecommendationsService, SearchResponse } from './recommendations.service'
+import { RecommendationsService, SearchResponse, TagSuggestion } from './recommendations.service'
 
 type MulterFile = { buffer: Buffer; mimetype: string; originalname: string }
 
@@ -84,5 +84,24 @@ export class RecommendationsController {
       category,
     )
     return { success: true, data }
+  }
+
+  @Post('tags/suggest')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'AI 標籤建議（批發商上傳圖片）' })
+  async suggestTags(
+    @Req() req: Request & { user: JwtPayload },
+    @UploadedFile() file: MulterFile,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const tags: TagSuggestion[] = await this.service.suggestTags(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+    )
+    return { success: true, data: { tags } }
   }
 }
