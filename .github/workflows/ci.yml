@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        working-directory: backend
+        run: pnpm prisma:generate
+
+      - name: Run unit tests
+        working-directory: backend
+        run: pnpm test --no-coverage
+
+      - name: Run E2E tests
+        working-directory: backend
+        run: pnpm test:e2e --forceExit
+        env:
+          JWT_ACCESS_SECRET: test-access-secret-for-ci-only
+          JWT_REFRESH_SECRET: test-refresh-secret-for-ci-only
+          ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+          RECOMMENDER_URL: http://localhost:8000
