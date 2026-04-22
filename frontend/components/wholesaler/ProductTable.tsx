@@ -68,7 +68,7 @@ export function ProductTable({ products }: Props) {
               <td className="py-3 pr-4 text-gray-900">
                 NT${Number(product.basePrice).toLocaleString('zh-TW')}
               </td>
-              <td className="py-3 pr-4 text-gray-600">{product.variants.length} 個</td>
+              <td className="py-3 pr-4 text-gray-600">{product.variants?.length ?? '-'} 個</td>
               <td className="py-3 pr-4">
                 <div className="flex flex-wrap gap-1">
                   {product.tags.slice(0, 3).map((tag) => (

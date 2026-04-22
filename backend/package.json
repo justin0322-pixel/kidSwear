@@ -16,7 +16,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "NODE_PATH=./node_modules ts-node --project ../db/tsconfig.seed.json ../db/seed.ts"
+    "prisma:seed": "tsx ../db/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

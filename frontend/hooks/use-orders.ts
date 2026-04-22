@@ -49,6 +49,11 @@ export type OrderDetail = Order & {
   items: OrderItem[]
 }
 
+type OrdersApiResponse = {
+  data: Order[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+
 type OrdersResponse = {
   items: Order[]
   total: number
@@ -92,10 +97,11 @@ export function useOrders(params: { page?: number; status?: string } = {}) {
   return useQuery({
     queryKey: ['orders', { page, status }],
     queryFn: async () => {
-      const res = await api.get<OrdersResponse>('/orders', {
+      const res = await api.get<OrdersApiResponse>('/orders', {
         params: { page, pageSize: 20, ...(status && { status }) },
       })
-      return res.data
+      const { data: items, pagination } = res.data
+      return { items, total: pagination.total, page: pagination.page, pageSize: pagination.pageSize }
     },
   })
 }

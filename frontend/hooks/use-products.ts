@@ -27,7 +27,7 @@ export type Product = {
   suggestedRetailPrice: string | null
   primaryImageUrl: string | null
   tags: ProductTag[]
-  variants: ProductVariant[]
+  variants?: ProductVariant[]
   shop: { id: number; name: string }
   createdAt: string
 }

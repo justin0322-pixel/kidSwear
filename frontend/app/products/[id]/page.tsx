@@ -63,19 +63,19 @@ export default function ProductDetailPage() {
 
   // 從已選尺寸/顏色推算可用選項
   const sizes = product
-    ? Array.from(new Set(product.variants.map((v) => v.size)))
+    ? Array.from(new Set((product.variants ?? []).map((v) => v.size)))
     : []
   const colors = product
     ? Array.from(
         new Set(
-          product.variants
+          (product.variants ?? [])
             .filter((v) => !selectedSize || v.size === selectedSize)
             .map((v) => v.color),
         ),
       )
     : []
 
-  const selectedVariant = product?.variants.find(
+  const selectedVariant = product?.variants?.find(
     (v) => v.size === selectedSize && v.color === selectedColor,
   ) ?? null
 
