@@ -55,9 +55,10 @@ model Wholesaler {
   taxId         String?   @unique @map("tax_id") @db.VarChar(20)
   contactPerson String    @map("contact_person") @db.VarChar(50)
   address       String?
-  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  lineNotifyToken String?   @map("line_notify_token") @db.VarChar(255)
+  verifiedAt      DateTime? @map("verified_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   shop Shop?

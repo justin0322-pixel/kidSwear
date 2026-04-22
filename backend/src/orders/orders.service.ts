@@ -5,10 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { OrderStatus, Prisma, UserRole } from '@prisma/client'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { PrismaService } from '../prisma/prisma.service'
-import { NotificationsService } from '../notifications/notifications.service'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
+import {
+  ORDER_CREATED,
+  ORDER_STATUS_CHANGED,
+  OrderCreatedEvent,
+  OrderStatusChangedEvent,
+} from './events/order.events'
 
 const VALID_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   [OrderStatus.pending]: [OrderStatus.paid, OrderStatus.cancelled],
@@ -47,15 +53,19 @@ type OrderRow = Prisma.OrderGetPayload<{ select: typeof ORDER_LIST_SELECT }>
 export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async create(userId: bigint, dto: CreateOrderDto) {
-    const retailer = await this.prisma.retailer.findUnique({ where: { userId } })
+    const retailer = await this.prisma.retailer.findUnique({
+      where: { userId },
+      include: { user: { select: { email: true } } },
+    })
     if (!retailer) throw new ForbiddenException()
 
     const shop = await this.prisma.shop.findFirst({
       where: { id: BigInt(dto.shopId), isActive: true, deletedAt: null },
+      include: { wholesaler: { include: { user: { select: { id: true, email: true } } } } },
     })
     if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
 
@@ -152,23 +162,18 @@ export class OrdersService {
 
     const result = await this.findById(userId, UserRole.retailer, orderId)
 
-    // Notify wholesaler of new order (fire-and-forget)
-    this.prisma.shop
-      .findUnique({
-        where: { id: shop.id },
-        include: { wholesaler: { select: { userId: true } } },
-      })
-      .then((s) => {
-        if (s?.wholesaler) {
-          this.notifications.notifyNewOrder(
-            s.wholesaler.userId.toString(),
-            result.id,
-            result.orderNumber,
-            retailer.shopName,
-          )
-        }
-      })
-      .catch(() => {})
+    if (shop.wholesaler) {
+      this.eventEmitter.emit(
+        ORDER_CREATED,
+        new OrderCreatedEvent(
+          result.id,
+          result.orderNumber,
+          shop.wholesaler.userId.toString(),
+          retailer.shopName,
+          shop.wholesaler.user.email ?? '',
+        ),
+      )
+    }
 
     return result
   }
@@ -273,7 +278,13 @@ export class OrdersService {
     })
     if (!wholesaler?.shop) throw new ForbiddenException()
 
-    const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { items: true } })
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: true,
+        retailer: { include: { user: { select: { id: true, email: true } } } },
+      },
+    })
     if (!order || order.shopId !== wholesaler.shop.id) {
       throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' })
     }
@@ -328,20 +339,17 @@ export class OrdersService {
 
     const result = await this.findById(userId, UserRole.wholesaler, orderId)
 
-    // Notify retailer of status change (fire-and-forget)
-    this.prisma.retailer
-      .findUnique({ where: { id: order.retailerId }, select: { userId: true } })
-      .then((r) => {
-        if (r) {
-          this.notifications.notifyOrderStatusChanged(
-            r.userId.toString(),
-            result.id,
-            result.orderNumber,
-            dto.status,
-          )
-        }
-      })
-      .catch(() => {})
+    this.eventEmitter.emit(
+      ORDER_STATUS_CHANGED,
+      new OrderStatusChangedEvent(
+        result.id,
+        result.orderNumber,
+        order.retailer.userId.toString(),
+        order.retailer.user.email ?? '',
+        dto.status,
+        null,
+      ),
+    )
 
     return result
   }
