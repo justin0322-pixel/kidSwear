@@ -2,11 +2,30 @@
 
 import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import Link from 'next/link'
+import { useQuery } from '@tanstack/react-query'
 import { useProduct } from '@/hooks/use-products'
 import { useAddToCart } from '@/hooks/use-cart'
 import { Navbar } from '@/components/layout/Navbar'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
+import { api } from '@/lib/api'
+import type { SearchResultItem } from '@/hooks/use-search'
+
+type SimilarResponse = { items: SearchResultItem[]; total: number }
+
+function useSimilarProducts(productId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['similar', productId],
+    queryFn: async () => {
+      const res = await api.get<{ data: SimilarResponse }>('/recommendations/similar', {
+        params: { productId, limit: 4 },
+      })
+      return res.data.data.items
+    },
+    enabled,
+  })
+}
 
 const GENDER_LABEL: Record<string, string> = {
   male: '男童',
@@ -21,6 +40,7 @@ export default function ProductDetailPage() {
 
   const { data: product, isLoading, isError } = useProduct(Number(id))
   const { mutate: addToCart, isPending: addingToCart } = useAddToCart()
+  const { data: similarItems } = useSimilarProducts(id, !!id && !isLoading && !isError)
 
   const [selectedImage, setSelectedImage] = useState(0)
   const [selectedSize, setSelectedSize] = useState<string | null>(null)
@@ -294,6 +314,45 @@ export default function ProductDetailPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 視覺相似商品 */}
+      {similarItems && similarItems.length > 0 && (
+        <div className="max-w-4xl mx-auto px-6 pb-12">
+          <section className="border-t pt-10">
+            <h2 className="text-lg font-semibold text-gray-900 mb-6">視覺相似商品</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {similarItems.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/products/${item.id}`}
+                  className="group border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                >
+                  <div className="aspect-square bg-gray-100 overflow-hidden">
+                    {item.primary_image_url ? (
+                      <img
+                        src={item.primary_image_url}
+                        alt={item.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">
+                        👕
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      NT${Number(item.base_price).toLocaleString('zh-TW')}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">{item.shop.name}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
         </div>
       )}
     </div>
