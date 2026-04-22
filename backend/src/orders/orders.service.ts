@@ -15,6 +15,7 @@ import {
   OrderCreatedEvent,
   OrderStatusChangedEvent,
 } from './events/order.events'
+import { InventoryService } from '../inventory/inventory.service'
 
 const VALID_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   [OrderStatus.pending]: [OrderStatus.paid, OrderStatus.cancelled],
@@ -54,6 +55,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly inventory: InventoryService,
   ) {}
 
   async create(userId: bigint, dto: CreateOrderDto) {
@@ -174,6 +176,9 @@ export class OrdersService {
         ),
       )
     }
+
+    // Check stock after reservedStock incremented
+    void this.inventory.checkVariants(dto.items.map((i) => BigInt(i.variantId)))
 
     return result
   }
@@ -350,6 +355,11 @@ export class OrdersService {
         null,
       ),
     )
+
+    // Re-check stock after actual decrement on completion
+    if (dto.status === OrderStatus.completed) {
+      void this.inventory.checkVariants(order.items.map((i) => i.variantId))
+    }
 
     return result
   }

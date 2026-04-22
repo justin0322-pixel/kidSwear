@@ -30,6 +30,7 @@ export type Product = {
   variants?: ProductVariant[]
   shop: { id: number; name: string }
   createdAt: string
+  lowStockCount?: number
 }
 
 export type ProductDetail = Omit<Product, 'tags'> & {

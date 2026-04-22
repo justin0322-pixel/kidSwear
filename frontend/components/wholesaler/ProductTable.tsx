@@ -61,7 +61,15 @@ export function ProductTable({ products }: Props) {
                       無圖
                     </div>
                   )}
-                  <span className="font-medium text-gray-900">{product.name}</span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium text-gray-900">{product.name}</span>
+                    {(product.lowStockCount ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-red-600 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
+                        {product.lowStockCount} 個規格庫存不足
+                      </span>
+                    )}
+                  </div>
                 </div>
               </td>
               <td className="py-3 pr-4 text-gray-600">{product.category}</td>

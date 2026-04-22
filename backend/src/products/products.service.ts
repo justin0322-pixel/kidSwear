@@ -138,6 +138,7 @@ export class ProductsService {
           images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
           productTags: { select: { tag: { select: { name: true } } } },
           shop: { select: { id: true, name: true } },
+          variants: { select: { stock: true, reservedStock: true, lowStockThreshold: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -153,6 +154,9 @@ export class ProductsService {
         primaryImageUrl: p.images[0]?.url ?? null,
         tags: p.productTags.map((pt) => pt.tag.name),
         shop: { id: p.shop.id.toString(), name: p.shop.name },
+        lowStockCount: p.variants.filter(
+          (v) => v.stock - v.reservedStock <= v.lowStockThreshold,
+        ).length,
       })),
       total,
       page,

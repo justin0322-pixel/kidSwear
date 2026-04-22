@@ -198,8 +198,9 @@ model ProductVariant {
   size          String   @db.VarChar(20)
   color         String   @db.VarChar(30)
   priceOverride Decimal? @map("price_override") @db.Decimal(10, 2)
-  stock         Int      @default(0)
-  reservedStock Int      @default(0) @map("reserved_stock")
+  stock              Int  @default(0)
+  reservedStock      Int  @default(0) @map("reserved_stock")
+  lowStockThreshold  Int  @default(5) @map("low_stock_threshold")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

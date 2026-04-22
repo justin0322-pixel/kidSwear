@@ -3,8 +3,10 @@ import { OnEvent } from '@nestjs/event-emitter'
 import {
   ORDER_CREATED,
   ORDER_STATUS_CHANGED,
+  STOCK_LOW,
   OrderCreatedEvent,
   OrderStatusChangedEvent,
+  StockLowEvent,
 } from '../orders/events/order.events'
 import { NotificationsService } from './notifications.service'
 import { EmailService } from './email.service'
@@ -44,6 +46,42 @@ export class NotificationsListener {
         lineToken,
         `\n新訂單 ${event.orderNumber}\n來自：${event.retailerShopName}`,
       )
+    }
+  }
+
+  @OnEvent(STOCK_LOW)
+  async handleStockLow(event: StockLowEvent): Promise<void> {
+    const message = `庫存預警：${event.productName}（${event.sku}）剩餘 ${event.availableStock} 件，低於閾值 ${event.threshold}`
+
+    // WebSocket push to wholesaler
+    if (event.wholesalerUserId) {
+      this.notifications.notifyUser(event.wholesalerUserId, {
+        type: 'new_order',
+        orderId: '',
+        orderNumber: '',
+        message,
+        data: {
+          variantId: event.variantId,
+          availableStock: event.availableStock,
+          threshold: event.threshold,
+        },
+      })
+    }
+
+    // Email to wholesaler
+    if (event.wholesalerEmail) {
+      await this.email.send({
+        to: event.wholesalerEmail,
+        subject: `[童裝平台] 庫存預警：${event.productName}`,
+        html: `
+          <h2>⚠️ 庫存預警通知</h2>
+          <p><strong>商品：</strong>${event.productName}</p>
+          <p><strong>SKU：</strong>${event.sku}</p>
+          <p><strong>可用庫存：</strong>${event.availableStock} 件</p>
+          <p><strong>預警閾值：</strong>${event.threshold} 件</p>
+          <p>請盡快補充庫存，避免影響訂單處理。</p>
+        `,
+      })
     }
   }
 

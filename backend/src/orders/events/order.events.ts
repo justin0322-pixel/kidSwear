@@ -1,5 +1,18 @@
 export const ORDER_CREATED = 'order.created'
 export const ORDER_STATUS_CHANGED = 'order.status_changed'
+export const STOCK_LOW = 'stock.low'
+
+export class StockLowEvent {
+  constructor(
+    public readonly variantId: string,
+    public readonly productName: string,
+    public readonly sku: string,
+    public readonly availableStock: number,
+    public readonly threshold: number,
+    public readonly wholesalerUserId: string,
+    public readonly wholesalerEmail: string,
+  ) {}
+}
 
 export class OrderCreatedEvent {
   constructor(
