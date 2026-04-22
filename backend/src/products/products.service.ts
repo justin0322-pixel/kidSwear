@@ -28,6 +28,82 @@ export class ProductsService {
     })
   }
 
+  async fullTextSearch(q: string, shopId?: string, page = 1, pageSize = 20) {
+    const offset = (page - 1) * pageSize
+    const term = q.trim()
+
+    type RawRow = {
+      id: bigint
+      name: string
+      category: string
+      base_price: string
+      shop_id: bigint
+      shop_name: string
+      primary_image_url: string | null
+      rank: number
+      headline: string
+      total_count: bigint
+    }
+
+    const shopFilter = shopId ? Prisma.sql`AND p.shop_id = ${BigInt(shopId)}` : Prisma.sql``
+
+    const rows = await this.prisma.$queryRaw<RawRow[]>`
+      SELECT
+        p.id,
+        p.name,
+        p.category,
+        p.base_price::text,
+        p.shop_id,
+        s.name AS shop_name,
+        (
+          SELECT pi.url FROM product_images pi
+          WHERE pi.product_id = p.id AND pi.is_primary = true
+          LIMIT 1
+        ) AS primary_image_url,
+        COALESCE(ts_rank(p.search_vector, plainto_tsquery('simple', ${term})), 0) +
+          COALESCE(similarity(p.name, ${term}), 0) AS rank,
+        COALESCE(
+          ts_headline(
+            'simple', p.name,
+            plainto_tsquery('simple', ${term}),
+            'StartSel=<<,StopSel=>>,MaxWords=8,MinWords=1'
+          ),
+          p.name
+        ) AS headline,
+        COUNT(*) OVER() AS total_count
+      FROM products p
+      JOIN shops s ON s.id = p.shop_id
+      WHERE
+        p.deleted_at IS NULL
+        AND p.status = 'active'
+        AND (
+          p.search_vector @@ plainto_tsquery('simple', ${term})
+          OR p.name ILIKE ${'%' + term + '%'}
+        )
+        ${shopFilter}
+      ORDER BY rank DESC, p.name
+      LIMIT ${pageSize} OFFSET ${offset}
+    `
+
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+    return {
+      items: rows.map((r) => ({
+        id: r.id.toString(),
+        name: r.name,
+        headline: r.headline,
+        category: r.category,
+        basePrice: r.base_price,
+        primaryImageUrl: r.primary_image_url,
+        shop: { id: r.shop_id.toString(), name: r.shop_name },
+        score: Math.min(1, Number(r.rank)),
+      })),
+      total,
+      page,
+      pageSize,
+      query: term,
+    }
+  }
+
   async findAll(query: QueryProductDto) {
     const page = Math.max(1, parseInt(query.page ?? '1', 10))
     const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize ?? '20', 10)))

@@ -126,6 +126,37 @@ export function useDeleteProduct() {
   })
 }
 
+export type FTSProduct = {
+  id: string
+  name: string
+  headline: string
+  category: string
+  basePrice: string
+  primaryImageUrl: string | null
+  shop: { id: string; name: string }
+  score: number
+}
+
+type FTSResponse = {
+  data: FTSProduct[]
+  query: string
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+
+export function useProductFTSearch(q: string, shopId?: string) {
+  return useQuery({
+    queryKey: ['product-fts', q, shopId],
+    queryFn: async () => {
+      const res = await api.get<FTSResponse>('/products/search', {
+        params: { q, shopId, pageSize: 20 },
+      })
+      return res.data
+    },
+    enabled: q.trim().length >= 1,
+    staleTime: 10_000,
+  })
+}
+
 export function useShopTags(shopId: number | undefined) {
   return useQuery({
     queryKey: ['shop-tags', shopId],
