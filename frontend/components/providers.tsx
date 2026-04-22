@@ -6,8 +6,15 @@ import { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { api, setApiToken } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
+import { useNotifications } from '@/hooks/use-notifications'
+import { Toaster } from '@/components/ui/toaster'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'
+
+function NotificationsInitializer() {
+  useNotifications()
+  return null
+}
 
 function AuthInitializer({ children }: { children: import('react').ReactNode }) {
   const { setAuth, setInitialized } = useAuthStore()
@@ -47,7 +54,11 @@ export function Providers({ children }: { children: import('react').ReactNode })
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthInitializer>{children}</AuthInitializer>
+      <AuthInitializer>
+        <NotificationsInitializer />
+        {children}
+      </AuthInitializer>
+      <Toaster />
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )

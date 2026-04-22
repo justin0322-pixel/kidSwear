@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common'
 import { OrderStatus, Prisma, UserRole } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
 
@@ -44,7 +45,10 @@ type OrderRow = Prisma.OrderGetPayload<{ select: typeof ORDER_LIST_SELECT }>
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(userId: bigint, dto: CreateOrderDto) {
     const retailer = await this.prisma.retailer.findUnique({ where: { userId } })
@@ -146,7 +150,27 @@ export class OrdersService {
       return order.id
     })
 
-    return this.findById(userId, UserRole.retailer, orderId)
+    const result = await this.findById(userId, UserRole.retailer, orderId)
+
+    // Notify wholesaler of new order (fire-and-forget)
+    this.prisma.shop
+      .findUnique({
+        where: { id: shop.id },
+        include: { wholesaler: { select: { userId: true } } },
+      })
+      .then((s) => {
+        if (s?.wholesaler) {
+          this.notifications.notifyNewOrder(
+            s.wholesaler.userId.toString(),
+            result.id,
+            result.orderNumber,
+            retailer.shopName,
+          )
+        }
+      })
+      .catch(() => {})
+
+    return result
   }
 
   async findAll(
@@ -302,7 +326,24 @@ export class OrdersService {
       }
     })
 
-    return this.findById(userId, UserRole.wholesaler, orderId)
+    const result = await this.findById(userId, UserRole.wholesaler, orderId)
+
+    // Notify retailer of status change (fire-and-forget)
+    this.prisma.retailer
+      .findUnique({ where: { id: order.retailerId }, select: { userId: true } })
+      .then((r) => {
+        if (r) {
+          this.notifications.notifyOrderStatusChanged(
+            r.userId.toString(),
+            result.id,
+            result.orderNumber,
+            dto.status,
+          )
+        }
+      })
+      .catch(() => {})
+
+    return result
   }
 
   async cancel(userId: bigint, orderId: bigint) {
