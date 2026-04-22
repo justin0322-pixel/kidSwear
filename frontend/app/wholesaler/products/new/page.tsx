@@ -53,6 +53,7 @@ export default function NewProductPage() {
   const { mutate: createProduct, isPending, error } = useCreateProduct()
   const [selectedTags, setSelectedTags] = useState<number[]>([])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageUrl, setImageUrl] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { mutate: suggestTags, isPending: isSuggesting, data: suggestedTags } = useSuggestTags()
 
@@ -110,6 +111,7 @@ export default function NewProductPage() {
           ...v,
           price: v.price || undefined,
         })),
+        imageUrls: imageUrl.trim() ? [imageUrl.trim()] : undefined,
       },
       {
         onSuccess: () => {
@@ -302,6 +304,18 @@ export default function NewProductPage() {
                   </div>
                 </div>
               )}
+
+              {/* 商品圖片 URL */}
+              <div className="space-y-1 pt-1">
+                <Label htmlFor="imageUrl">商品主圖連結（URL）</Label>
+                <Input
+                  id="imageUrl"
+                  placeholder="https://cdn.example.com/product.jpg"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                />
+                <p className="text-xs text-gray-400">填入後系統將自動計算 AI 向量，讓此商品出現在搜尋結果中</p>
+              </div>
             </section>
 
             {/* 標籤 */}

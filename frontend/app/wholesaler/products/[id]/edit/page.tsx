@@ -47,6 +47,7 @@ export default function EditProductPage() {
 
   const [selectedTags, setSelectedTags] = useState<number[]>([])
   const [tagsInitialized, setTagsInitialized] = useState(false)
+  const [imageUrl, setImageUrl] = useState('')
 
   const {
     register,
@@ -66,6 +67,8 @@ export default function EditProductPage() {
         basePrice: product.basePrice,
         suggestedRetailPrice: product.suggestedRetailPrice ?? '',
       })
+      const primary = product.images.find((img) => img.isPrimary) ?? product.images[0]
+      if (primary) setImageUrl(primary.url)
     }
   }, [product, reset])
 
@@ -91,6 +94,7 @@ export default function EditProductPage() {
         ...values,
         tags: selectedTags,
         suggestedRetailPrice: values.suggestedRetailPrice || undefined,
+        imageUrls: imageUrl.trim() ? [imageUrl.trim()] : undefined,
       },
       {
         onSuccess: () => router.push('/wholesaler/products'),
@@ -212,6 +216,29 @@ export default function EditProductPage() {
                     {...register('suggestedRetailPrice')}
                   />
                 </div>
+              </div>
+            </section>
+
+            {/* 商品圖片 */}
+            <section className="bg-white rounded-lg border p-6 space-y-3">
+              <h2 className="font-semibold text-gray-900">商品主圖</h2>
+              {imageUrl && (
+                <img
+                  src={imageUrl}
+                  alt="商品主圖預覽"
+                  className="h-32 w-auto object-contain rounded border"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              )}
+              <div className="space-y-1">
+                <Label htmlFor="imageUrl">圖片連結（URL）</Label>
+                <Input
+                  id="imageUrl"
+                  placeholder="https://cdn.example.com/product.jpg"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                />
+                <p className="text-xs text-gray-400">變更後系統將重新計算 AI 向量索引</p>
               </div>
             </section>
 

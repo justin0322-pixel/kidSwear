@@ -57,6 +57,7 @@ type CreateProductPayload = {
   attributes: Record<string, string>
   tags: number[]
   variants: { size: string; color: string; stock: number; price?: string }[]
+  imageUrls?: string[]
 }
 
 export function useMyProducts(params: { page?: number; search?: string } = {}) {
