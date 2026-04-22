@@ -212,6 +212,100 @@ export class AuthService {
     return `https://access.line.me/oauth2/v2.1/authorize?${params}`
   }
 
+  getGoogleAuthUrl(state: string): string {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: this.config.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+      redirect_uri: this.config.getOrThrow<string>('GOOGLE_CALLBACK_URL'),
+      state,
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'select_account',
+    })
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+  }
+
+  async googleOAuthExchange(code: string, res: Response): Promise<{ redirectUrl: string }> {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000')
+
+    // Exchange code for tokens
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.config.getOrThrow<string>('GOOGLE_CALLBACK_URL'),
+        client_id: this.config.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+        client_secret: this.config.getOrThrow<string>('GOOGLE_CLIENT_SECRET'),
+      }),
+    })
+
+    if (!tokenRes.ok) throw new InternalServerErrorException('Google 授權失敗')
+
+    type GoogleTokenResponse = { access_token: string; id_token: string }
+    const tokenData = (await tokenRes.json()) as GoogleTokenResponse
+
+    // Decode id_token to get user info (no extra request needed)
+    type GoogleIdToken = { sub: string; email?: string; name?: string; picture?: string }
+    let googleUser: GoogleIdToken
+    try {
+      googleUser = JSON.parse(
+        Buffer.from(tokenData.id_token.split('.')[1], 'base64url').toString(),
+      ) as GoogleIdToken
+    } catch {
+      throw new InternalServerErrorException('無法解析 Google 使用者資料')
+    }
+
+    // Find existing OAuth binding
+    const existing = await this.prisma.userOauthAccount.findFirst({
+      where: { provider: OauthProvider.google, providerUserId: googleUser.sub },
+      include: { user: true },
+    })
+
+    if (existing) {
+      await this.prisma.userOauthAccount.update({
+        where: { id: existing.id },
+        data: { accessToken: tokenData.access_token },
+      })
+      const { accessToken } = this.issueTokens(existing.user.id, existing.user.email!, existing.user.role, res)
+      const role = existing.user.role
+      const dest = role === UserRole.wholesaler ? '/wholesaler/dashboard' : '/retailer/home'
+      return { redirectUrl: `${frontendUrl}/auth/callback?token=${accessToken}&role=${role}&redirect=${encodeURIComponent(dest)}` }
+    }
+
+    // New Google user — create retailer account
+    const user = await this.prisma.user.create({
+      data: {
+        email: googleUser.email ?? null,
+        role: UserRole.retailer,
+        status: UserStatus.active,
+        retailer: {
+          create: {
+            shopName: googleUser.name ?? 'Google 用戶',
+            contactPerson: googleUser.name ?? 'Google 用戶',
+            shippingAddress: '',
+          },
+        },
+        oauthAccounts: {
+          create: {
+            provider: OauthProvider.google,
+            providerUserId: googleUser.sub,
+            providerEmail: googleUser.email,
+            providerName: googleUser.name,
+            providerAvatar: googleUser.picture,
+            accessToken: tokenData.access_token,
+          },
+        },
+      },
+    })
+
+    const { accessToken } = this.issueTokens(user.id, googleUser.email ?? '', UserRole.retailer, res)
+    return {
+      redirectUrl: `${frontendUrl}/auth/callback?token=${accessToken}&role=retailer&redirect=${encodeURIComponent('/retailer/onboarding')}&new=1`,
+    }
+  }
+
   async lineOAuthExchange(code: string, res: Response): Promise<{ redirectUrl: string }> {
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000')
 

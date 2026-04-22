@@ -113,6 +113,34 @@ export class AuthController {
     res.redirect(redirectUrl)
   }
 
+  @Get('google')
+  @ApiOperation({ summary: 'Google OAuth 授權跳轉' })
+  googleLogin(@Res() res: Response): void {
+    const state = Math.random().toString(36).slice(2)
+    res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000 })
+    res.redirect(this.authService.getGoogleAuthUrl(state))
+  }
+
+  @Get('google/callback')
+  @ApiOperation({ summary: 'Google OAuth 回呼處理' })
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const cookieState = (req.cookies as Record<string, string | undefined>)['oauth_state']
+    res.clearCookie('oauth_state')
+    if (!code || state !== cookieState) {
+      res.redirect(
+        `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/login?error=oauth_failed`,
+      )
+      return
+    }
+    const { redirectUrl } = await this.authService.googleOAuthExchange(code, res)
+    res.redirect(redirectUrl)
+  }
+
   @Put('profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
