@@ -6,6 +6,7 @@
 [![Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20NestJS%20%7C%20FastAPI-blue)]()
 [![DB](https://img.shields.io/badge/DB-PostgreSQL%20%2B%20pgvector-336791)]()
 [![Tests](https://img.shields.io/badge/Tests-28%20passing-brightgreen)]()
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF)]()
 [![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ED)]()
 
 ---
@@ -59,6 +60,66 @@
 
 ---
 
+### 🔍 商品全文搜尋（PostgreSQL FTS）
+
+```
+輸入關鍵字（debounce 300ms）
+    └─ GET /products/search?q=藍色上衣
+            ├─ tsvector @@ plainto_tsquery('simple', ...)  ← 詞語比對
+            ├─ name ILIKE '%keyword%'                      ← 中文子字串（pg_trgm）
+            ├─ ts_rank + similarity() 混合排序             ← 相關度排序
+            └─ ts_headline() 標記命中關鍵字                ← 高亮顯示
+
+按「AI 搜尋」
+    └─ CLIP 語意搜尋 → 相似度 bar 展示
+```
+
+- `setweight(A/B/C)` 為 name / category / description 設定搜尋權重
+- GIN 雙索引：`tsvector` 索引 + `gin_trgm_ops` 索引
+- 搜尋頁即時 FTS + 按需 AI 語意搜尋，展示兩種搜尋能力
+
+---
+
+### 🔔 事件驅動即時通知
+
+```
+下單 / 訂單狀態變更
+    │
+    ▼  EventEmitter2（全域事件匯流排）
+NotificationsListener
+    ├── WebSocket（socket.io）→ 瀏覽器即時 Toast
+    ├── Email（Nodemailer SMTP）→ 信箱通知
+    └── LINE Notify API → LINE 推播（批發商綁定後啟用）
+```
+
+- `OrdersService` 只 emit 事件，不直接依賴任何通知服務（完全解耦）
+- 前端：socket.io-client + Zustand toast store + Radix UI Toast
+
+---
+
+### ⚠️ 庫存預警系統
+
+```
+下單後 / 訂單完成後
+    └─ InventoryService.checkVariants()
+            └─ available ≤ threshold?
+                    └─ emit StockLowEvent（含 1 小時 cooldown 防抖）
+
+@Cron 每小時
+    └─ InventoryService.scanAllLowStock()   ← 安全網
+
+StockLowEvent → NotificationsListener
+    ├── WebSocket 即時警告（批發商）
+    ├── Email 通知
+    └── 商品管理表格：低庫存 badge（紅色閃爍）
+```
+
+- `lowStockThreshold` 欄位存於 `ProductVariant`（預設 5）
+- 雙觸發機制：事件驅動（即時）+ Cron（安全網）
+- `@nestjs/schedule` 宣告式排程
+
+---
+
 ### 🏷️ AI 標籤建議
 
 批發商上傳商品圖片 → CLIP 向量找 15 個視覺相似商品 → 統計標籤頻率 → 回傳 Top 8 建議標籤，一鍵套用。
@@ -72,7 +133,7 @@
     └─ fire-and-forget POST /tasks/embed-product
             └─ Celery Worker
                     └─ 抓主圖 → CLIP encode → 寫入 products.image_embedding
-                    
+
 每 6 小時（Celery Beat）
     └─ retrain_svd task → 從最新訂單重建互動矩陣 → 重新 fit SVD
 ```
@@ -82,9 +143,18 @@
 ### 🔐 身份認證
 
 - 帳密登入（bcrypt cost 12 + JWT RS256）
-- **LINE OAuth**（Authorization Code Flow，手動實作，無 Passport 依賴）
-- 新用戶 Onboarding（補填店名、聯絡人、收件地址）
+- **LINE OAuth**（Authorization Code Flow，手動實作）
+- **Google OAuth**（Authorization Code Flow + id_token 解碼，無 Passport 依賴）
 - Access Token 15 分鐘 + Refresh Token 30 天（httpOnly Cookie）
+- 新用戶 Onboarding（補填店名、聯絡人、收件地址）
+
+---
+
+### 🛡️ 管理員後台
+
+- 使用者列表（角色篩選、啟用 / 停用）
+- 商城列表（啟用 / 停用）
+- Role-based guard（`assertAdmin()` 統一保護所有 admin 路由）
 
 ---
 
@@ -98,8 +168,10 @@
 | 語言 | TypeScript strict mode |
 | 樣式 | Tailwind CSS + shadcn/ui |
 | 伺服器狀態 | TanStack Query（useQuery / useMutation） |
-| 全域狀態 | Zustand（auth store） |
+| 全域狀態 | Zustand（auth store、toast store） |
 | 表單 | React Hook Form + Zod |
+| 即時通訊 | socket.io-client |
+| 通知 UI | Radix UI Toast |
 
 ### Backend — NestJS
 
@@ -107,10 +179,15 @@
 |------|------|
 | 框架 | NestJS 10 + TypeScript |
 | ORM | Prisma 5（PostgreSQL） |
-| 認證 | JWT RS256 + LINE OAuth |
+| 認證 | JWT RS256 + LINE / Google OAuth |
 | 快取 | Redis 7（ioredis，購物車 Hash） |
 | 驗證 | class-validator + class-transformer |
 | 文件 | Swagger（自動產生） |
+| 即時通訊 | WebSocket（@nestjs/websockets + socket.io） |
+| 事件系統 | @nestjs/event-emitter（EventEmitter2） |
+| 排程 | @nestjs/schedule（Cron） |
+| Email | Nodemailer（SMTP） |
+| 全文搜尋 | PostgreSQL tsvector + pg_trgm |
 
 ### Recommender — FastAPI
 
@@ -131,6 +208,7 @@
 | PostgreSQL + pgvector | 16 |
 | Redis | 7 |
 | Docker Compose | — |
+| GitHub Actions CI | unit tests + E2E + type-check |
 
 ---
 
@@ -139,13 +217,33 @@
 ```
 Browser
   └── Next.js (3000)
-        └── NestJS API (4000)
-              ├── PostgreSQL (5432)  ← pgvector HNSW index
-              ├── Redis (6379)       ← 購物車 Hash + Celery broker
-              └── FastAPI (8000)
-                    ├── PostgreSQL（共用）
-                    ├── Celery Worker  ← CLIP embedding（非同步）
-                    └── Celery Beat    ← SVD 重訓（每 6 小時）
+        ├── HTTP  → NestJS API (4000)
+        │             ├── PostgreSQL (5432)  ← pgvector HNSW + FTS GIN index
+        │             ├── Redis (6379)       ← 購物車 Hash + Celery broker
+        │             └── FastAPI (8000)     ← AI 推薦代理
+        │
+        └── WebSocket /notifications → NestJS (4000)
+                └── socket.io rooms (user:{id})  ← 即時通知
+
+FastAPI (8000)
+  ├── PostgreSQL（共用）
+  ├── Celery Worker  ← CLIP embedding（非同步）
+  └── Celery Beat    ← SVD 重訓（每 6 小時）
+```
+
+### 事件流架構
+
+```
+OrdersService / InventoryService
+    │  emit(event)
+    ▼
+EventEmitter2（NestJS global event bus）
+    │  @OnEvent()
+    ▼
+NotificationsListener
+    ├── NotificationsService  → WebSocket (socket.io)
+    ├── EmailService          → Nodemailer SMTP
+    └── LineNotifyService     → LINE Notify API
 ```
 
 ### Docker Compose Services
@@ -168,20 +266,19 @@ Browser
 
 | 路由 | 說明 |
 |------|------|
-| `/` | 平台首頁（特色介紹、熱門商城預覽） |
-| `/login` | 登入（LINE OAuth + 帳密） |
+| `/` | 平台首頁 |
+| `/login` | 登入（LINE / Google OAuth + 帳密） |
 | `/register` | 註冊（角色選擇） |
-| `/auth/callback` | OAuth 回呼中轉 |
 | `/shops` | 商城列表（分頁） |
 | `/shops/:slug` | 商城詳情（商品列表、篩選） |
-| `/products/:id` | 商品詳情（規格選擇、加入購物車） |
+| `/products/:id` | 商品詳情（規格選擇、相似商品推薦） |
 
 ### 零售商
 
 | 路由 | 說明 |
 |------|------|
 | `/retailer/home` | 首頁（AI 個人化推薦 + LLM 解釋） |
-| `/retailer/search` | 搜尋（文字語意 / 以圖搜圖） |
+| `/retailer/search` | 搜尋（即時 FTS + AI 語意 + 以圖搜圖） |
 | `/retailer/cart` | 購物車（調整數量、刪除） |
 | `/retailer/checkout` | 結帳（多商城自動分單） |
 | `/retailer/orders` | 訂單列表（狀態篩選） |
@@ -194,14 +291,21 @@ Browser
 | 路由 | 說明 |
 |------|------|
 | `/wholesaler/dashboard` | 儀表板（今日訂單、月營收、商品數） |
-| `/wholesaler/products` | 商品管理列表 |
+| `/wholesaler/products` | 商品管理列表（低庫存 badge） |
 | `/wholesaler/products/new` | 新增商品（含 AI 標籤建議） |
-| `/wholesaler/products/:id/edit` | 編輯商品（含圖片預覽） |
+| `/wholesaler/products/:id/edit` | 編輯商品 |
 | `/wholesaler/orders` | 訂單管理（狀態篩選） |
 | `/wholesaler/orders/:id` | 訂單處理（更新狀態、備註） |
 | `/wholesaler/analytics` | 數據分析（營收趨勢、熱銷排行） |
 | `/wholesaler/shop` | 商城設定 |
 | `/wholesaler/tags` | 標籤管理 |
+
+### 管理員
+
+| 路由 | 說明 |
+|------|------|
+| `/admin/users` | 使用者管理（角色篩選、啟用 / 停用） |
+| `/admin/shops` | 商城管理（啟用 / 停用） |
 
 ---
 
@@ -214,18 +318,21 @@ Base URL：`/api/v1`
 | 方法 | 路由 | 說明 | 認證 |
 |------|------|------|------|
 | POST | `/register` | 帳密註冊 | — |
-| POST | `/login` | 帳密登入（設 Cookie） | — |
+| POST | `/login` | 帳密登入 | — |
 | POST | `/refresh` | 刷新 Access Token | Cookie |
 | POST | `/logout` | 登出 | JWT |
 | GET | `/me` | 取得當前使用者 | JWT |
 | GET | `/line` | LINE OAuth 授權跳轉 | — |
 | GET | `/line/callback` | LINE OAuth 回呼 | — |
+| GET | `/google` | Google OAuth 授權跳轉 | — |
+| GET | `/google/callback` | Google OAuth 回呼 | — |
 | PUT | `/profile` | 更新零售商資料 | JWT |
 
 ### Products `/products`
 
 | 方法 | 路由 | 說明 | 認證 |
 |------|------|------|------|
+| GET | `/search` | 全文搜尋（pg_trgm + tsvector） | — |
 | GET | `/` | 列出商品（分頁、篩選） | — |
 | GET | `/:id` | 商品詳情 | — |
 | POST | `/` | 建立商品（批發商） | JWT |
@@ -258,35 +365,37 @@ Base URL：`/api/v1`
 |------|------|------|------|
 | GET | `/` | 商城列表（分頁） | — |
 | GET | `/my` | 自己的商城 | JWT |
-| GET | `/my/stats` | 商城統計（今日/月） | JWT |
+| GET | `/my/stats` | 商城統計（今日 / 月） | JWT |
 | GET | `/my/analytics` | 30 日分析數據 | JWT |
 | PUT | `/my` | 更新商城資訊 | JWT |
-| GET | `/slug/:slug` | 以 slug 取得商城 | — |
-| GET | `/:id/tags` | 商城標籤列表 | — |
 | GET | `/:id` | 商城詳情 | — |
+| GET | `/:id/tags` | 商城標籤列表 | — |
 
 ### Recommendations `/recommendations`
 
 | 方法 | 路由 | 說明 | 認證 |
 |------|------|------|------|
 | GET | `/for-you` | 個人化推薦（SVD + LLM） | JWT |
+| GET | `/similar` | 相似商品（CLIP） | — |
 | POST | `/search/text` | 文字語意搜尋（CLIP） | — |
 | POST | `/search/image` | 以圖搜圖（CLIP） | — |
 | POST | `/tags/suggest` | AI 標籤建議（批發商） | JWT |
 
-### Tags `/tags`
+### Admin `/admin`
 
 | 方法 | 路由 | 說明 | 認證 |
 |------|------|------|------|
-| POST | `/` | 建立標籤（批發商） | JWT |
-| DELETE | `/:id` | 刪除標籤（批發商） | JWT |
+| GET | `/users` | 使用者列表（分頁、角色篩選） | JWT + Admin |
+| PATCH | `/users/:id/status` | 啟用 / 停用使用者 | JWT + Admin |
+| GET | `/shops` | 商城列表（分頁） | JWT + Admin |
+| PATCH | `/shops/:id/status` | 啟用 / 停用商城 | JWT + Admin |
 
 ---
 
 ## 資料庫模型
 
 ```
-User ──┬── Wholesaler ── Shop ──┬── Product ──┬── ProductVariant
+User ──┬── Wholesaler ── Shop ──┬── Product ──┬── ProductVariant (lowStockThreshold)
        │                        │              ├── ProductImage
        │                        │              └── ProductTag ── Tag
        │                        └── Order ─────── OrderItem
@@ -298,6 +407,8 @@ User ──┬── Wholesaler ── Shop ──┬── Product ──┬─
 **Enums**：`UserRole` / `ProductStatus` / `OrderStatus` / `ProductGender` / `BehaviorAction`
 
 **pgvector**：`products.image_embedding vector(512)`，HNSW cosine 索引
+
+**FTS**：`products.search_vector tsvector`，GIN 索引 + `name` gin_trgm_ops 索引，auto-update trigger
 
 ---
 
@@ -323,6 +434,15 @@ cp .env.example .env
 | `JWT_REFRESH_SECRET` | Refresh Token 私鑰 | ✅ |
 | `LINE_CHANNEL_ID` | LINE Login Channel ID | OAuth 用 |
 | `LINE_CHANNEL_SECRET` | LINE Login Channel Secret | OAuth 用 |
+| `GOOGLE_CLIENT_ID` | Google OAuth Client ID | OAuth 用 |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret | OAuth 用 |
+| `GOOGLE_REDIRECT_URI` | Google OAuth 回呼 URL | OAuth 用 |
+| `LINE_NOTIFY_CLIENT_ID` | LINE Notify Client ID | 推播用 |
+| `LINE_NOTIFY_CLIENT_SECRET` | LINE Notify Client Secret | 推播用 |
+| `LINE_NOTIFY_REDIRECT_URI` | LINE Notify 回呼 URL | 推播用 |
+| `SMTP_HOST` | SMTP 伺服器位址 | Email 用 |
+| `SMTP_USER` | SMTP 帳號 | Email 用 |
+| `SMTP_PASS` | SMTP 密碼 | Email 用 |
 | `ANTHROPIC_API_KEY` | Claude API 金鑰（LLM 解釋） | 選填 |
 
 ### 一鍵啟動（Docker）
@@ -377,9 +497,6 @@ cd backend
 # 執行所有單元測試
 pnpm test
 
-# 指定測試檔
-./node_modules/.bin/jest "orders.service|cart.service" --no-coverage
-
 # 覆蓋率報告
 pnpm test:cov
 
@@ -391,9 +508,14 @@ pnpm test:e2e
 
 | 測試套件 | 測試數 | 覆蓋重點 |
 |---------|--------|---------|
+| `ProductsService` | 12 | findAll（3）、findById（3）、create（2）、update（2）、remove（2） |
 | `OrdersService` | 16 | 建立訂單（6 種錯誤）、狀態機轉換、取消與庫存釋放 |
 | `CartService` | 12 | getCart、addItem 累加、updateItem、removeItem、clearCart |
-| **合計** | **28** | **全數通過** |
+| E2E（supertest） | 12 | health、auth register/login、shops list、products list |
+| FastAPI（pytest） | 5 | health、embed_product success/422/500/invalid type |
+| **合計** | **57** | **全數通過** |
+
+**CI**：GitHub Actions 在每次 push 自動執行 backend 單元 + E2E 測試、frontend type-check、FastAPI pytest。
 
 ---
 
@@ -405,10 +527,12 @@ pnpm test:e2e
 - Docker Compose（7 個 service）
 - PostgreSQL 16 + pgvector HNSW 向量索引
 - Redis 7（購物車 Hash + Celery broker）
+- GitHub Actions CI（unit / E2E / type-check / pytest）
 
 **認證**
 - 帳密登入 / 註冊（bcrypt + JWT RS256）
 - LINE OAuth（Authorization Code Flow）
+- Google OAuth（Authorization Code Flow + id_token 解碼）
 - 新用戶 Onboarding 流程
 
 **批發商**
@@ -421,7 +545,7 @@ pnpm test:e2e
 
 **零售商**
 - AI 個人化推薦首頁（SVD + LLM 解釋）
-- 以文字 / 圖片搜尋商品（CLIP）
+- 商品搜尋（即時 FTS + AI 語意 + 以圖搜圖）
 - 購物車（Redis Hash，跨裝置同步）
 - 多商城結帳下單
 - 訂單列表 / 詳情 / 追蹤 / 取消
@@ -435,18 +559,45 @@ pnpm test:e2e
 - Celery 非同步 embedding（商品建立後自動觸發）
 - Celery Beat SVD 定期重訓（每 6 小時）
 
+**通知系統**
+- WebSocket 即時通知（socket.io，JWT 認證，per-user room）
+- 事件驅動架構（EventEmitter2 解耦 OrdersService 與通知邏輯）
+- Email 通知（Nodemailer，未設定時優雅停用）
+- LINE Notify 推播（OAuth 綁定流程 + token 存 DB）
+
+**搜尋**
+- PostgreSQL 全文搜尋（tsvector + GIN 索引 + auto-update trigger）
+- pg_trgm 中文子字串 fuzzy 搜尋
+- ts_rank + similarity 混合相關度排序
+- ts_headline 關鍵字高亮
+
+**庫存管理**
+- 低庫存閾值（`lowStockThreshold`，per-variant 設定）
+- 事件驅動庫存檢查（下單 / 完成訂單後觸發）
+- @Cron 每小時全掃安全網
+- 1 小時 cooldown 防抖
+- WebSocket + Email 庫存預警通知
+- 商品管理表格低庫存 badge
+
+**管理員後台**
+- 使用者管理（列表、啟用 / 停用）
+- 商城管理（列表、啟用 / 停用）
+- Role-based guard
+
 **測試**
+- ProductsService 單元測試（12 tests）
 - OrdersService 單元測試（16 tests）
 - CartService 單元測試（12 tests）
+- E2E 測試 12 cases（supertest）
+- FastAPI pytest 5 cases
 
 ### 📋 未來版本
 
 - 金流整合（綠界 / 藍新）
 - 物流整合（黑貓 / 新竹物流）
 - 電子發票
-- 管理員後台（使用者管理、商城審核）
-- Google OAuth
-- Email 通知（訂單狀態變更）
+- CSV 訂單匯出
+- 訂單分析 Dashboard（Recharts 圖表）
 
 ---
 
@@ -455,17 +606,23 @@ pnpm test:e2e
 **AI 架構深度**  
 三層推薦系統從傳統 ML（SVD）→ 深度學習（CLIP）→ LLM（Claude），完整呈現業界推薦系統演進路徑。
 
+**事件驅動設計**  
+`OrdersService` 透過 `EventEmitter2` emit 事件，`NotificationsListener` 訂閱並分發 WebSocket / Email / LINE Notify，服務間完全解耦，新增通知管道無需改動業務邏輯。
+
+**多層次搜尋**  
+即時 FTS（pg_trgm + tsvector，毫秒級）→ AI 語意搜尋（CLIP，跨商城語意比對）→ 以圖搜圖，三種搜尋能力層層遞進。
+
 **向量搜尋實作**  
 pgvector HNSW 索引 + 512 維 CLIP 向量，cosine 相似度搜尋，支援跨商城以圖搜圖與 AI 標籤建議。
 
 **非同步 AI 架構**  
-Celery Worker 處理耗時的 CLIP embedding，fire-and-forget 不阻塞商品建立 API；Celery Beat 自動定期重訓 SVD，確保推薦模型跟上最新訂單資料。
+Celery Worker 處理耗時的 CLIP embedding，不阻塞商品建立 API；Celery Beat 自動定期重訓 SVD，確保推薦模型跟上最新訂單資料。
+
+**可觀測的庫存系統**  
+雙觸發庫存預警（事件驅動 + Cron 安全網）+ cooldown 防抖 + 多通道通知，貼近真實電商維運需求。
 
 **微服務分離**  
-NestJS 主業務 ↔ FastAPI AI 推薦，純 HTTP proxy，無 gRPC 複雜依賴，各自獨立擴展。
-
-**資料庫設計**  
-表繼承（Wholesaler / Retailer 繼承 User）、SKU 變體、訂單狀態機、庫存 reservedStock 機制，貼近真實電商業務需求。
+NestJS 主業務 ↔ FastAPI AI 推薦，純 HTTP proxy，各自獨立擴展。
 
 ---
 
