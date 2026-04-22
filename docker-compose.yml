@@ -144,6 +144,23 @@ services:
       redis:
         condition: service_healthy
 
+  # ─── Celery Beat（定時排程）───────────────────────────────
+  celery_beat:
+    build:
+      context: ./recommender
+      dockerfile: Dockerfile
+    container_name: kidswear_celery_beat
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-kidswear}:${POSTGRES_PASSWORD:-kidswear_dev}@postgres:5432/${POSTGRES_DB:-kidswear}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

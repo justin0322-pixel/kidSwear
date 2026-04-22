@@ -8,7 +8,7 @@ celery_app = Celery(
     "kidswear_recommender",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.embed_product"],
+    include=["app.tasks.embed_product", "app.tasks.retrain_svd"],
 )
 
 celery_app.conf.update(
@@ -19,4 +19,10 @@ celery_app.conf.update(
     enable_utc=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    beat_schedule={
+        "retrain-svd-every-6-hours": {
+            "task": "retrain_svd",
+            "schedule": 6 * 60 * 60,  # seconds
+        },
+    },
 )
