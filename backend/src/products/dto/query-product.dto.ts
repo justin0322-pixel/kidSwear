@@ -41,4 +41,9 @@ export class QueryProductDto {
   @IsOptional()
   @IsNumberString()
   pageSize?: string
+
+  @ApiPropertyOptional({ description: '設為 true 時回傳所有狀態（批發商自己的商品）' })
+  @IsOptional()
+  @IsString()
+  includeInactive?: string
 }

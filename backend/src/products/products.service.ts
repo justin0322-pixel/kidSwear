@@ -112,9 +112,10 @@ export class ProductsService {
       .map((t) => t.trim())
       .filter(Boolean)
 
+    const includeInactive = query.includeInactive === 'true'
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
-      status: ProductStatus.active,
+      ...(includeInactive ? {} : { status: ProductStatus.active }),
       ...(query.shopId && { shopId: BigInt(query.shopId) }),
       ...(query.category && { category: query.category }),
       ...(query.search && { name: { contains: query.search, mode: 'insensitive' as const } }),
@@ -133,6 +134,7 @@ export class ProductsService {
         select: {
           id: true,
           name: true,
+          status: true,
           category: true,
           basePrice: true,
           images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
@@ -149,6 +151,7 @@ export class ProductsService {
       items: raw.map((p) => ({
         id: p.id.toString(),
         name: p.name,
+        status: p.status,
         category: p.category,
         basePrice: p.basePrice.toString(),
         primaryImageUrl: p.images[0]?.url ?? null,
@@ -325,6 +328,14 @@ export class ProductsService {
     await this.prisma.product.update({
       where: { id: productId },
       data: { deletedAt: new Date(), status: ProductStatus.archived },
+    })
+  }
+
+  async toggleStatus(userId: bigint, productId: bigint, status: ProductStatus): Promise<void> {
+    await this.verifyOwnership(userId, productId)
+    await this.prisma.product.update({
+      where: { id: productId },
+      data: { status },
     })
   }
 

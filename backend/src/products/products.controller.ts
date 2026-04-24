@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -15,7 +16,16 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { UserRole } from '@prisma/client'
+import { ProductStatus, UserRole } from '@prisma/client'
+import { IsIn } from 'class-validator'
+
+const TOGGLEABLE_STATUSES = ['active', 'draft'] as const
+type ToggleableStatus = (typeof TOGGLEABLE_STATUSES)[number]
+
+class ToggleStatusDto {
+  @IsIn(TOGGLEABLE_STATUSES as unknown as string[])
+  status!: ToggleableStatus
+}
 import type { Request } from 'express'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
@@ -100,6 +110,21 @@ export class ProductsController {
     if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
     const data = await this.productsService.update(BigInt(req.user.sub), BigInt(id), dto)
     return { success: true, data }
+  }
+
+  @Patch(':id/status')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '切換商品上架狀態（批發商）' })
+  async toggleStatus(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+    @Body() dto: ToggleStatusDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    await this.productsService.toggleStatus(BigInt(req.user.sub), BigInt(id), dto.status as ProductStatus)
+    return { success: true }
   }
 
   @Delete(':id')

@@ -19,9 +19,12 @@ export type ProductTag = {
   color: string | null
 }
 
+export type ProductStatus = 'active' | 'draft' | 'sold_out' | 'archived'
+
 export type Product = {
   id: number
   name: string
+  status: ProductStatus
   category: string
   basePrice: string
   suggestedRetailPrice: string | null
@@ -69,7 +72,7 @@ export function useMyProducts(params: { page?: number; search?: string } = {}) {
     queryKey: ['my-products', { page, search, shopId: shop?.id }],
     queryFn: async () => {
       const res = await api.get<ProductsResponse>('/products', {
-        params: { page, pageSize: 20, search, shopId: shop!.id },
+        params: { page, pageSize: 20, search, shopId: shop!.id, includeInactive: true },
       })
       return res.data
     },
@@ -120,6 +123,18 @@ export function useDeleteProduct() {
   return useMutation({
     mutationFn: async (id: number) => {
       await api.delete(`/products/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-products'] })
+    },
+  })
+}
+
+export function useToggleProductStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: 'active' | 'draft' }) => {
+      await api.patch(`/products/${id}/status`, { status })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-products'] })

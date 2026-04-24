@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useProduct, useUpdateProduct, useShopTags } from '@/hooks/use-products'
 import { useMyShop } from '@/hooks/use-shop'
+import { ImageUploader } from '@/components/wholesaler/ImageUploader'
 import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,7 +54,7 @@ export default function EditProductPage() {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isDirty },
+    formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   useEffect(() => {
@@ -221,25 +222,25 @@ export default function EditProductPage() {
 
             {/* 商品圖片 */}
             <section className="bg-white rounded-lg border p-6 space-y-3">
-              <h2 className="font-semibold text-gray-900">商品主圖</h2>
-              {imageUrl && (
-                <img
-                  src={imageUrl}
-                  alt="商品主圖預覽"
-                  className="h-32 w-auto object-contain rounded border"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              )}
-              <div className="space-y-1">
-                <Label htmlFor="imageUrl">圖片連結（URL）</Label>
-                <Input
-                  id="imageUrl"
-                  placeholder="https://cdn.example.com/product.jpg"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                />
-                <p className="text-xs text-gray-400">變更後系統將重新計算 AI 向量索引</p>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900">商品主圖</h2>
+                <span className="text-xs text-gray-400">上傳新圖片將取代現有主圖</span>
               </div>
+              {imageUrl && (
+                <div className="flex items-start gap-3">
+                  <img
+                    src={imageUrl}
+                    alt="商品主圖"
+                    className="h-24 w-24 object-cover rounded-lg border bg-gray-50"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <div className="flex-1 text-xs text-gray-400 break-all pt-1">{imageUrl}</div>
+                </div>
+              )}
+              <ImageUploader
+                onUploaded={(url) => setImageUrl(url)}
+              />
+              <p className="text-xs text-gray-400">上傳後系統將重新計算 AI 向量索引</p>
             </section>
 
             {/* 標籤 */}
@@ -286,7 +287,7 @@ export default function EditProductPage() {
               >
                 取消
               </Button>
-              <Button type="submit" className="flex-1" disabled={isPending || (!isDirty && selectedTags.length === 0)}>
+              <Button type="submit" className="flex-1" disabled={isPending}>
                 {isPending ? '儲存中...' : '儲存變更'}
               </Button>
             </div>
