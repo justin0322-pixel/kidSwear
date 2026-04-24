@@ -277,6 +277,7 @@ model Order {
   contactPhone    String      @map("contact_phone") @db.VarChar(20)
   retailerNote    String?     @map("retailer_note")
   wholesalerNote  String?     @map("wholesaler_note")
+  trackingNumber  String?     @map("tracking_number") @db.VarChar(100)
   paidAt          DateTime?   @map("paid_at") @db.Timestamptz
   shippedAt       DateTime?   @map("shipped_at") @db.Timestamptz
   completedAt     DateTime?   @map("completed_at") @db.Timestamptz

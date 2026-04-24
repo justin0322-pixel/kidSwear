@@ -25,6 +25,16 @@ export type OrderItem = {
   productId: number
 }
 
+export type StatusHistoryEntry = {
+  id: string
+  fromStatus: OrderStatus | null
+  toStatus: OrderStatus
+  note: string | null
+  createdAt: string
+  changedByEmail: string | null
+  changedByRole: 'wholesaler' | 'retailer' | 'admin' | null
+}
+
 export type Order = {
   id: number
   orderNumber: string
@@ -36,6 +46,7 @@ export type Order = {
   contactPhone: string
   retailerNote: string | null
   wholesalerNote: string | null
+  trackingNumber: string | null
   paidAt: string | null
   shippedAt: string | null
   completedAt: string | null
@@ -47,18 +58,12 @@ export type Order = {
 
 export type OrderDetail = Order & {
   items: OrderItem[]
+  statusHistory: StatusHistoryEntry[]
 }
 
 type OrdersApiResponse = {
   data: Order[]
   pagination: { page: number; pageSize: number; total: number; totalPages: number }
-}
-
-type OrdersResponse = {
-  items: Order[]
-  total: number
-  page: number
-  pageSize: number
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -81,14 +86,24 @@ export const STATUS_COLOR: Record<OrderStatus, string> = {
   refunded: 'bg-red-100 text-red-600',
 }
 
+export const STATUS_ICON: Record<OrderStatus, string> = {
+  pending: '⏳',
+  paid: '💰',
+  processing: '📦',
+  shipped: '🚚',
+  completed: '✅',
+  cancelled: '✕',
+  refunded: '↩',
+}
+
 // 批發商可執行的狀態轉換
-export const WHOLESALER_TRANSITIONS: Partial<Record<OrderStatus, { next: OrderStatus; label: string }[]>> = {
-  pending: [{ next: 'paid', label: '標記已付款' }],
+export const WHOLESALER_TRANSITIONS: Partial<Record<OrderStatus, { next: OrderStatus; label: string; requiresTracking?: boolean }[]>> = {
+  pending: [{ next: 'paid', label: '確認收款' }],
   paid: [
     { next: 'processing', label: '開始備貨' },
     { next: 'refunded', label: '退款' },
   ],
-  processing: [{ next: 'shipped', label: '標記已出貨' }],
+  processing: [{ next: 'shipped', label: '標記出貨', requiresTracking: true }],
   shipped: [{ next: 'completed', label: '確認完成' }],
 }
 
@@ -120,7 +135,7 @@ export function useOrder(id: number) {
 export function useUpdateOrderStatus(orderId: number) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { status: OrderStatus; note?: string }) => {
+    mutationFn: async (payload: { status: OrderStatus; note?: string; trackingNumber?: string }) => {
       const res = await api.patch<{ data: OrderDetail }>(
         `/orders/${orderId}/status`,
         payload,

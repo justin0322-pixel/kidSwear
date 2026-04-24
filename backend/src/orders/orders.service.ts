@@ -227,7 +227,10 @@ export class OrdersService {
       where: { id: orderId },
       include: {
         items: true,
-        statusHistory: { orderBy: { createdAt: 'asc' } },
+        statusHistory: {
+          orderBy: { createdAt: 'asc' },
+          include: { changedByUser: { select: { email: true, role: true } } },
+        },
         shop: { select: { id: true, name: true } },
         retailer: { select: { id: true, shopName: true, userId: true } },
       },
@@ -249,6 +252,7 @@ export class OrdersService {
       contactPhone: order.contactPhone,
       retailerNote: order.retailerNote,
       wholesalerNote: order.wholesalerNote,
+      trackingNumber: order.trackingNumber,
       paidAt: order.paidAt,
       shippedAt: order.shippedAt,
       completedAt: order.completedAt,
@@ -272,6 +276,8 @@ export class OrdersService {
         toStatus: h.toStatus,
         note: h.note,
         createdAt: h.createdAt,
+        changedByEmail: h.changedByUser?.email ?? null,
+        changedByRole: h.changedByUser?.role ?? null,
       })),
     }
   }
@@ -310,7 +316,12 @@ export class OrdersService {
     await this.prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
-        data: { status: dto.status, wholesalerNote: dto.note ?? order.wholesalerNote, ...timestamps },
+        data: {
+          status: dto.status,
+          wholesalerNote: dto.note ?? order.wholesalerNote,
+          ...(dto.trackingNumber !== undefined && { trackingNumber: dto.trackingNumber }),
+          ...timestamps,
+        },
       })
 
       await tx.orderStatusHistory.create({

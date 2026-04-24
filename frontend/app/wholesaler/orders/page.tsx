@@ -4,9 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   useOrders,
+  useUpdateOrderStatus,
   STATUS_LABEL,
   STATUS_COLOR,
   type OrderStatus,
+  type Order,
 } from '@/hooks/use-orders'
 import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
@@ -20,6 +22,33 @@ const STATUS_TABS: { value: string; label: string }[] = [
   { value: 'completed', label: '已完成' },
   { value: 'cancelled', label: '已取消' },
 ]
+
+// 列表頁只顯示最重要的單步快速操作
+const QUICK_ACTION: Partial<Record<OrderStatus, { label: string; next: OrderStatus }>> = {
+  pending: { label: '確認收款', next: 'paid' },
+  paid: { label: '開始備貨', next: 'processing' },
+}
+
+function QuickActionButton({ order }: { order: Order }) {
+  const action = QUICK_ACTION[order.status]
+  const { mutate, isPending } = useUpdateOrderStatus(Number(order.id))
+  if (!action) return null
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={isPending}
+      onClick={(e) => {
+        e.stopPropagation()
+        mutate({ status: action.next })
+      }}
+      className="text-xs whitespace-nowrap"
+    >
+      {isPending ? '更新中...' : action.label}
+    </Button>
+  )
+}
 
 export default function WholesalerOrdersPage() {
   const router = useRouter()
@@ -83,19 +112,16 @@ export default function WholesalerOrdersPage() {
           {data && data.items.length > 0 && (
             <div className="divide-y">
               {data.items.map((order) => (
-                <button
+                <div
                   key={order.id}
-                  type="button"
+                  className="px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => router.push(`/wholesaler/orders/${order.id}`)}
-                  className="w-full text-left px-6 py-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-gray-900">{order.orderNumber}</span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[order.status]}`}
-                        >
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[order.status]}`}>
                           {STATUS_LABEL[order.status]}
                         </span>
                       </div>
@@ -106,14 +132,17 @@ export default function WholesalerOrdersPage() {
                         {new Date(order.createdAt).toLocaleString('zh-TW')}
                       </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-semibold text-gray-900">
-                        NT${Number(order.total).toLocaleString('zh-TW')}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">查看 →</p>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <p className="font-semibold text-gray-900">
+                          NT${Number(order.total).toLocaleString('zh-TW')}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">查看詳情 →</p>
+                      </div>
+                      <QuickActionButton order={order} />
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}

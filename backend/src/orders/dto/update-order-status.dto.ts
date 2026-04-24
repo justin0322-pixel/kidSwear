@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { OrderStatus } from '@prisma/client'
-import { IsEnum, IsOptional, IsString } from 'class-validator'
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator'
 
 const WHOLESALER_STATUSES = [
   OrderStatus.paid,
@@ -19,4 +19,10 @@ export class UpdateOrderStatusDto {
   @IsOptional()
   @IsString()
   note?: string
+
+  @ApiPropertyOptional({ example: '123456789' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  trackingNumber?: string
 }

@@ -1,13 +1,44 @@
 'use client'
 
 import { useRouter, useParams } from 'next/navigation'
-import { useOrder, STATUS_LABEL, STATUS_COLOR } from '@/hooks/use-orders'
+import { useOrder, STATUS_LABEL, STATUS_COLOR, STATUS_ICON } from '@/hooks/use-orders'
 import { Navbar } from '@/components/layout/Navbar'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import type { StatusHistoryEntry } from '@/hooks/use-orders'
 
 const STATUS_STEPS = ['pending', 'paid', 'processing', 'shipped', 'completed'] as const
+
+function StatusTimeline({ history }: { history: StatusHistoryEntry[] }) {
+  return (
+    <section className="bg-white rounded-lg border p-6">
+      <h2 className="font-semibold text-gray-900 mb-4">訂單動態</h2>
+      <ol className="relative border-l border-gray-200 ml-3 space-y-5">
+        {history.map((entry, i) => (
+          <li key={entry.id} className="ml-6">
+            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full text-xs border-2 border-white ${
+              i === history.length - 1 ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {STATUS_ICON[entry.toStatus]}
+            </span>
+            <div>
+              <p className="text-sm font-medium text-gray-900">{STATUS_LABEL[entry.toStatus]}</p>
+              <time className="text-xs text-gray-400">
+                {new Date(entry.createdAt).toLocaleString('zh-TW')}
+              </time>
+              {entry.note && (
+                <p className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 mt-1 max-w-sm">
+                  {entry.note}
+                </p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
 
 export default function RetailerOrderDetailPage() {
   const router = useRouter()
@@ -184,7 +215,7 @@ export default function RetailerOrderDetailPage() {
 
             {/* 取消訂單 */}
             {order.status === 'pending' && (
-              <div className="pb-4">
+              <div>
                 <Button
                   variant="outline"
                   className="w-full border-red-200 text-red-500 hover:bg-red-50 hover:border-red-400"
@@ -197,6 +228,21 @@ export default function RetailerOrderDetailPage() {
                 </Button>
               </div>
             )}
+
+            {/* 物流單號 */}
+            {order.trackingNumber && (
+              <section className="bg-white rounded-lg border p-4">
+                <p className="text-xs text-gray-500 mb-1">物流單號</p>
+                <p className="font-mono font-medium text-gray-900 text-sm">{order.trackingNumber}</p>
+              </section>
+            )}
+
+            {/* 狀態時間軸 */}
+            {order.statusHistory && order.statusHistory.length > 0 && (
+              <StatusTimeline history={order.statusHistory} />
+            )}
+
+            <div className="pb-4" />
           </>
         )}
       </main>
