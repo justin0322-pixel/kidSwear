@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { OrderStatus, Prisma, UserRole } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { InventoryService } from '../inventory/inventory.service'
 import { CreateOrderDto } from './dto/create-order.dto'
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
 import { OrdersService } from './orders.service'
@@ -41,7 +43,7 @@ const makeOrder = (overrides = {}) => ({
   items: [{ id: BigInt(1), variantId: BigInt(100), quantity: 1, productName: '小熊上衣', sku: 'SKU-001', size: '90cm', color: '粉紅', unitPrice: D('250'), subtotal: D('250') }],
   statusHistory: [],
   shop: { id: BigInt(2), name: '測試商城' },
-  retailer: { id: BigInt(1), shopName: '零售商', userId: BigInt(10) },
+  retailer: { id: BigInt(1), shopName: '零售商', userId: BigInt(10), user: { email: 'retailer@example.com' } },
   ...overrides,
 })
 
@@ -68,6 +70,8 @@ describe('OrdersService', () => {
       providers: [
         OrdersService,
         { provide: PrismaService, useValue: p },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: InventoryService, useValue: { checkVariants: jest.fn() } },
       ],
     }).compile()
 

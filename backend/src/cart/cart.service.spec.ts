@@ -20,6 +20,7 @@ const makeVariant = (overrides = {}) => ({
     name: '小熊上衣',
     basePrice: D('250'),
     shopId: BigInt(2),
+    shop: { name: '測試商城', slug: 'test-shop' },
     images: [{ url: 'https://example.com/img.jpg' }],
   },
   ...overrides,
