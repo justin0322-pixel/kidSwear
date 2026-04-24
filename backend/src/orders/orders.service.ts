@@ -189,6 +189,7 @@ export class OrdersService {
     status?: string,
     page = 1,
     pageSize = 20,
+    search?: string,
   ) {
     const skip = (page - 1) * pageSize
     const statusFilter = status ? ({ status: status as OrderStatus } as Prisma.OrderWhereInput) : {}
@@ -207,7 +208,16 @@ export class OrdersService {
       roleFilter = { shopId: wholesaler.shop.id }
     }
 
-    const where: Prisma.OrderWhereInput = { ...roleFilter, ...statusFilter }
+    const searchFilter: Prisma.OrderWhereInput = search
+      ? {
+          OR: [
+            { orderNumber: { contains: search, mode: 'insensitive' } },
+            { retailer: { shopName: { contains: search, mode: 'insensitive' } } },
+          ],
+        }
+      : {}
+
+    const where: Prisma.OrderWhereInput = { ...roleFilter, ...statusFilter, ...searchFilter }
     const [raw, total] = await Promise.all([
       this.prisma.order.findMany({
         where,
@@ -279,6 +289,7 @@ export class OrdersService {
         changedByEmail: h.changedByUser?.email ?? null,
         changedByRole: h.changedByUser?.role ?? null,
       })),
+      itemCount: order.items.reduce((sum, i) => sum + i.quantity, 0),
     }
   }
 

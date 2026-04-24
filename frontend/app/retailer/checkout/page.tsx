@@ -1,10 +1,12 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useCart, useClearCart, type CartItem } from '@/hooks/use-cart'
+import { useProfile } from '@/hooks/use-profile'
 import { Navbar } from '@/components/layout/Navbar'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -49,12 +51,24 @@ export default function CheckoutPage() {
   const router = useRouter()
   const { data: cart, isLoading: cartLoading } = useCart()
   const { mutate: clearCart } = useClearCart()
+  const { data: profile } = useProfile()
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
+
+  useEffect(() => {
+    if (!profile) return
+    reset({
+      contactName: profile.profile?.contactPerson ?? '',
+      contactPhone: profile.phone ?? '',
+      shippingAddress: profile.profile?.shippingAddress ?? '',
+      retailerNote: '',
+    })
+  }, [profile, reset])
 
   const { mutate: createOrder, isPending, error } = useMutation({
     mutationFn: async (values: FormValues) => {
@@ -82,11 +96,9 @@ export default function CheckoutPage() {
     },
     onSuccess: (orders) => {
       clearCart()
-      if (orders.length === 1) {
-        router.push(`/retailer/orders/${orders[0].id}`)
-      } else {
-        router.push('/retailer/orders')
-      }
+      const [first, ...rest] = orders
+      const alsoParam = rest.length > 0 ? `?also=${rest.map((o) => o.id).join(',')}` : ''
+      router.push(`/retailer/orders/${first.id}/success${alsoParam}`)
     },
   })
 

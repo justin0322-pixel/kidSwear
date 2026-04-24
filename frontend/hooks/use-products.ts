@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { useMyShop } from '@/hooks/use-shop'
 
 export type ProductVariant = {
-  id: number
+  id: string
   sku: string
   size: string
   color: string
@@ -31,18 +31,19 @@ export type Product = {
   primaryImageUrl: string | null
   tags: ProductTag[]
   variants?: ProductVariant[]
-  shop: { id: number; name: string }
+  shop: { id: number; name: string; slug?: string }
   createdAt: string
   lowStockCount?: number
 }
 
-export type ProductDetail = Omit<Product, 'tags'> & {
+export type ProductDetail = Omit<Product, 'tags' | 'shop'> & {
   description: string | null
   ageRange: string | null
   gender: string | null
   attributes: Record<string, string>
   images: { id: string; url: string; isPrimary: boolean; altText: string | null }[]
   tags: string[]
+  shop: { id: string; name: string; slug: string }
 }
 
 type ProductsResponse = {
@@ -64,15 +65,25 @@ type CreateProductPayload = {
   imageUrls?: string[]
 }
 
-export function useMyProducts(params: { page?: number; search?: string } = {}) {
-  const { page = 1, search } = params
+export function useMyProducts(
+  params: { page?: number; search?: string; status?: string; category?: string } = {},
+) {
+  const { page = 1, search, status, category } = params
   const { data: shop } = useMyShop()
 
   return useQuery({
-    queryKey: ['my-products', { page, search, shopId: shop?.id }],
+    queryKey: ['my-products', { page, search, shopId: shop?.id, status, category }],
     queryFn: async () => {
       const res = await api.get<ProductsResponse>('/products', {
-        params: { page, pageSize: 20, search, shopId: shop!.id, includeInactive: true },
+        params: {
+          page,
+          pageSize: 20,
+          search,
+          shopId: shop!.id,
+          includeInactive: true,
+          ...(status && { status }),
+          ...(category && { category }),
+        },
       })
       return res.data
     },
@@ -170,6 +181,44 @@ export function useProductFTSearch(q: string, shopId?: string) {
     },
     enabled: q.trim().length >= 1,
     staleTime: 10_000,
+  })
+}
+
+export function useAddVariant(productId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { size: string; color: string; stock: number; price?: string }) => {
+      const res = await api.post<{ data: ProductVariant }>(`/products/${productId}/variants`, payload)
+      return res.data.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product', productId] })
+    },
+  })
+}
+
+export function useUpdateVariant(productId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ variantId, stock, price }: { variantId: number; stock?: number; price?: string }) => {
+      const res = await api.patch<{ data: ProductVariant }>(`/products/${productId}/variants/${variantId}`, { stock, price })
+      return res.data.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product', productId] })
+    },
+  })
+}
+
+export function useRemoveVariant(productId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (variantId: number) => {
+      await api.delete(`/products/${productId}/variants/${variantId}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product', productId] })
+    },
   })
 }
 

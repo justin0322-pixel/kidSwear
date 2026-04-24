@@ -1,20 +1,49 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useShops } from '@/hooks/use-shops'
 import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 export default function ShopsPage() {
   const [page, setPage] = useState(1)
-  const { data, isLoading, isError } = useShops({ page })
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput)
+      setPage(1)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const { data, isLoading, isError } = useShops({ page, search })
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <div className="max-w-5xl mx-auto px-6 py-4">
-        <h1 className="text-xl font-bold text-gray-900">所有商城</h1>
+      <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
+        <h1 className="text-xl font-bold text-gray-900 shrink-0">所有商城</h1>
+        <div className="relative max-w-xs w-full">
+          <Input
+            placeholder="搜尋商城名稱..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="pr-8"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => setSearchInput('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       <main className="p-6 max-w-5xl mx-auto">
@@ -31,7 +60,9 @@ export default function ShopsPage() {
         )}
 
         {data && data.data.length === 0 && (
-          <p className="text-center text-gray-400 py-16">目前還沒有商城</p>
+          <p className="text-center text-gray-400 py-16">
+            {search ? `找不到「${search}」相關商城` : '目前還沒有商城'}
+          </p>
         )}
 
         {data && data.data.length > 0 && (

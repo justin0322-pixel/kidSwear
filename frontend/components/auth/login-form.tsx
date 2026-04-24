@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -22,8 +22,11 @@ type FormValues = z.infer<typeof schema>
 
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { setAuth } = useAuthStore()
   const [error, setError] = useState<string | null>(null)
+
+  const oauthError = searchParams.get('error') === 'oauth_failed'
 
   const {
     register,
@@ -60,6 +63,12 @@ export function LoginForm() {
         <CardDescription className="text-center">童裝批發訂單平台</CardDescription>
       </CardHeader>
       <CardContent>
+        {oauthError && (
+          <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-600 mb-4">
+            社群登入失敗，請重試或使用帳號登入
+          </div>
+        )}
+
         {/* Social OAuth */}
         <div className="space-y-2 mb-4">
           <a

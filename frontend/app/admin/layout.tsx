@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuthStore } from '@/stores/auth-store'
 
 const NAV = [
+  { label: '系統總覽', href: '/admin/dashboard' },
   { label: '使用者管理', href: '/admin/users' },
   { label: '商城管理', href: '/admin/shops' },
 ]

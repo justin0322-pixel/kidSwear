@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useProduct, useUpdateProduct, useShopTags } from '@/hooks/use-products'
+import { useProduct, useUpdateProduct, useShopTags, useAddVariant, useUpdateVariant, useRemoveVariant, type ProductVariant } from '@/hooks/use-products'
 import { useMyShop } from '@/hooks/use-shop'
 import { ImageUploader } from '@/components/wholesaler/ImageUploader'
 import { Navbar } from '@/components/layout/Navbar'
@@ -35,6 +35,129 @@ const GENDERS = [
   { value: 'female', label: '女童' },
   { value: 'unisex', label: '不限' },
 ]
+
+// ─── Variant Manager ─────────────────────────────────────────────────────────
+
+type VariantRowProps = { variant: ProductVariant; productId: number }
+
+function VariantRow({ variant, productId }: VariantRowProps) {
+  const [stock, setStock] = useState(String(variant.stock))
+  const [price, setPrice] = useState(variant.price)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [dirty, setDirty] = useState(false)
+
+  const { mutate: updateVariant, isPending: saving } = useUpdateVariant(productId)
+  const { mutate: removeVariant, isPending: deleting } = useRemoveVariant(productId)
+
+  const handleSave = () => {
+    updateVariant(
+      { variantId: Number(variant.id), stock: Number(stock), price: price || undefined },
+      { onSuccess: () => setDirty(false) },
+    )
+  }
+
+  return (
+    <tr className="border-b last:border-0">
+      <td className="py-2.5 pr-3 text-sm text-gray-700">{variant.size}</td>
+      <td className="py-2.5 pr-3 text-sm text-gray-700">{variant.color}</td>
+      <td className="py-2.5 pr-3">
+        <input
+          type="number"
+          min={0}
+          value={stock}
+          onChange={(e) => { setStock(e.target.value); setDirty(true) }}
+          className="w-20 rounded border border-input px-2 py-1 text-sm text-center tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </td>
+      <td className="py-2.5 pr-3">
+        <input
+          type="text"
+          placeholder="同批發價"
+          value={price}
+          onChange={(e) => { setPrice(e.target.value); setDirty(true) }}
+          className="w-24 rounded border border-input px-2 py-1 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </td>
+      <td className="py-2.5">
+        <div className="flex items-center gap-2">
+          {dirty && (
+            <Button size="sm" disabled={saving} onClick={handleSave}>
+              {saving ? '…' : '儲存'}
+            </Button>
+          )}
+          {confirmDel ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={deleting}
+                className="border-red-400 text-red-500 hover:bg-red-50"
+                onClick={() => removeVariant(Number(variant.id))}
+              >
+                確認刪除
+              </Button>
+              <button type="button" className="text-xs text-gray-400 hover:text-gray-600" onClick={() => setConfirmDel(false)}>取消</button>
+            </>
+          ) : (
+            <button type="button" className="text-xs text-gray-400 hover:text-red-400" onClick={() => setConfirmDel(true)}>刪除</button>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+type AddVariantFormProps = { productId: number; onDone: () => void }
+
+function AddVariantForm({ productId, onDone }: AddVariantFormProps) {
+  const [size, setSize] = useState('')
+  const [color, setColor] = useState('')
+  const [stock, setStock] = useState('0')
+  const [price, setPrice] = useState('')
+  const { mutate: addVariant, isPending, error } = useAddVariant(productId)
+
+  const handleAdd = () => {
+    if (!size.trim() || !color.trim()) return
+    addVariant(
+      { size: size.trim(), color: color.trim(), stock: Number(stock), price: price || undefined },
+      { onSuccess: () => { setSize(''); setColor(''); setStock('0'); setPrice(''); onDone() } },
+    )
+  }
+
+  return (
+    <div className="border-t pt-4 space-y-3">
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">新增規格</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="space-y-1">
+          <label className="text-xs text-gray-500">尺寸 *</label>
+          <Input placeholder="e.g. 90cm" value={size} onChange={(e) => setSize(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-gray-500">顏色 *</label>
+          <Input placeholder="e.g. 白色" value={color} onChange={(e) => setColor(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-gray-500">庫存</label>
+          <Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-gray-500">單獨訂價</label>
+          <Input placeholder="選填" value={price} onChange={(e) => setPrice(e.target.value)} />
+        </div>
+      </div>
+      {error && (
+        <p className="text-xs text-red-500">
+          {(error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? '新增失敗'}
+        </p>
+      )}
+      <Button size="sm" disabled={isPending || !size.trim() || !color.trim()} onClick={handleAdd}>
+        {isPending ? '新增中...' : '+ 新增規格'}
+      </Button>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EditProductPage() {
   const router = useRouter()
@@ -241,6 +364,36 @@ export default function EditProductPage() {
                 onUploaded={(url) => setImageUrl(url)}
               />
               <p className="text-xs text-gray-400">上傳後系統將重新計算 AI 向量索引</p>
+            </section>
+
+            {/* 規格與庫存 */}
+            <section className="bg-white rounded-lg border p-6 space-y-4">
+              <h2 className="font-semibold text-gray-900">規格與庫存</h2>
+
+              {product.variants && product.variants.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-gray-400">
+                        <th className="pb-2 pr-3 font-medium">尺寸</th>
+                        <th className="pb-2 pr-3 font-medium">顏色</th>
+                        <th className="pb-2 pr-3 font-medium">庫存</th>
+                        <th className="pb-2 pr-3 font-medium">訂價（NT$）</th>
+                        <th className="pb-2 font-medium">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {product.variants.map((v) => (
+                        <VariantRow key={v.id} variant={v} productId={productId} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">尚無任何規格，請新增。</p>
+              )}
+
+              <AddVariantForm productId={productId} onDone={() => {}} />
             </section>
 
             {/* 標籤 */}

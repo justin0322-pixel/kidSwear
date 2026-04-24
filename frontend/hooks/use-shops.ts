@@ -20,12 +20,14 @@ type ShopsResponse = {
   pagination: { page: number; pageSize: number; total: number; totalPages: number }
 }
 
-export function useShops(params: { page?: number } = {}) {
-  const { page = 1 } = params
+export function useShops(params: { page?: number; search?: string } = {}) {
+  const { page = 1, search } = params
   return useQuery({
-    queryKey: ['shops', { page }],
+    queryKey: ['shops', { page, search }],
     queryFn: async () => {
-      const res = await api.get<ShopsResponse>('/shops', { params: { page, pageSize: 20 } })
+      const res = await api.get<ShopsResponse>('/shops', {
+        params: { page, pageSize: 20, ...(search && { search }) },
+      })
       return res.data
     },
   })

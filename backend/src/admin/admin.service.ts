@@ -100,4 +100,46 @@ export class AdminService {
     if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
     await this.prisma.shop.update({ where: { id: shopId }, data: { isActive } })
   }
+
+  async getStats() {
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const [
+      totalUsers,
+      wholesalerCount,
+      retailerCount,
+      newUsersToday,
+      totalOrders,
+      pendingOrders,
+      revenueAgg,
+      activeShops,
+      activeProducts,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: { deletedAt: null } }),
+      this.prisma.user.count({ where: { deletedAt: null, role: 'wholesaler' } }),
+      this.prisma.user.count({ where: { deletedAt: null, role: 'retailer' } }),
+      this.prisma.user.count({ where: { deletedAt: null, createdAt: { gte: todayStart } } }),
+      this.prisma.order.count(),
+      this.prisma.order.count({ where: { status: 'pending' } }),
+      this.prisma.order.aggregate({
+        _sum: { total: true },
+        where: { status: { in: ['paid', 'processing', 'shipped', 'completed'] } },
+      }),
+      this.prisma.shop.count({ where: { deletedAt: null, isActive: true } }),
+      this.prisma.product.count({ where: { deletedAt: null, status: 'active' } }),
+    ])
+
+    return {
+      totalUsers,
+      wholesalerCount,
+      retailerCount,
+      newUsersToday,
+      totalOrders,
+      pendingOrders,
+      confirmedRevenue: revenueAgg._sum.total?.toString() ?? '0',
+      activeShops,
+      activeProducts,
+    }
+  }
 }

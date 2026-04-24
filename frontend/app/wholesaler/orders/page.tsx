@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   useOrders,
@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-orders'
 import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: '', label: '全部' },
@@ -54,8 +55,18 @@ export default function WholesalerOrdersPage() {
   const router = useRouter()
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
 
-  const { data, isLoading, isError } = useOrders({ page, status })
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput)
+      setPage(1)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const { data, isLoading, isError } = useOrders({ page, status, search })
 
   const handleTabChange = (val: string) => {
     setStatus(val)
@@ -72,22 +83,41 @@ export default function WholesalerOrdersPage() {
       </div>
 
       <main className="p-6 max-w-5xl mx-auto space-y-4">
-        {/* 狀態篩選 */}
-        <div className="flex gap-2 flex-wrap">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => handleTabChange(tab.value)}
-              className={`px-4 py-1.5 rounded-full text-sm border transition-colors ${
-                status === tab.value
-                  ? 'bg-gray-900 text-white border-gray-900'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        {/* 搜尋 + 狀態篩選 */}
+        <div className="space-y-2">
+          <div className="relative max-w-sm">
+            <Input
+              placeholder="搜尋訂單編號或零售商..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="pr-8"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {STATUS_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => handleTabChange(tab.value)}
+                className={`px-4 py-1.5 rounded-full text-sm border transition-colors ${
+                  status === tab.value
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="bg-white rounded-lg border">

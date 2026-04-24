@@ -8,17 +8,58 @@ import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+const STATUS_OPTIONS = [
+  { value: '', label: '全部狀態' },
+  { value: 'active', label: '上架中' },
+  { value: 'draft', label: '草稿' },
+  { value: 'sold_out', label: '售完' },
+  { value: 'archived', label: '已下架' },
+]
+
+const CATEGORY_OPTIONS = [
+  { value: '', label: '全部分類' },
+  { value: '上衣', label: '上衣' },
+  { value: '褲子', label: '褲子' },
+  { value: '裙子', label: '裙子' },
+  { value: '套裝', label: '套裝' },
+  { value: '外套', label: '外套' },
+  { value: '配件', label: '配件' },
+  { value: '其他', label: '其他' },
+]
+
 export default function WholesalerProductsPage() {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
 
-  const { data, isLoading, isError } = useMyProducts({ page, search })
+  const { data, isLoading, isError } = useMyProducts({
+    page,
+    search,
+    status: statusFilter || undefined,
+    category: categoryFilter || undefined,
+  })
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setSearch(searchInput)
+    setPage(1)
+  }
+
+  const handleFilterChange = (key: 'status' | 'category', value: string) => {
+    if (key === 'status') setStatusFilter(value)
+    else setCategoryFilter(value)
+    setPage(1)
+  }
+
+  const hasFilter = search || statusFilter || categoryFilter
+  const clearAll = () => {
+    setSearch('')
+    setSearchInput('')
+    setStatusFilter('')
+    setCategoryFilter('')
     setPage(1)
   }
 
@@ -31,24 +72,40 @@ export default function WholesalerProductsPage() {
       </div>
 
       <main className="p-6 max-w-6xl mx-auto space-y-4">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <Input
-            placeholder="搜尋商品名稱..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="max-w-xs"
-          />
-          <Button type="submit" variant="outline">搜尋</Button>
-          {search && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => { setSearch(''); setSearchInput(''); setPage(1) }}
-            >
-              清除
+        <div className="flex flex-wrap gap-2 items-center">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <Input
+              placeholder="搜尋商品名稱..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-48"
+            />
+            <Button type="submit" variant="outline">搜尋</Button>
+          </form>
+          <select
+            value={statusFilter}
+            onChange={(e) => handleFilterChange('status', e.target.value)}
+            className="text-sm border rounded-md px-3 py-2 text-gray-700 bg-white"
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => handleFilterChange('category', e.target.value)}
+            className="text-sm border rounded-md px-3 py-2 text-gray-700 bg-white"
+          >
+            {CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {hasFilter && (
+            <Button type="button" variant="outline" size="sm" onClick={clearAll}>
+              清除篩選
             </Button>
           )}
-        </form>
+        </div>
 
         <div className="bg-white rounded-lg border p-6">
           {isLoading && (

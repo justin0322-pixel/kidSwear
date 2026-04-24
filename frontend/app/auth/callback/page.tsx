@@ -4,6 +4,16 @@ import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/stores/auth-store'
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split('.')[1]
+    if (!part) return null
+    return JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 export default function AuthCallbackPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -20,8 +30,11 @@ export default function AuthCallbackPage() {
       return
     }
 
-    // Store token in auth store (email unknown at this point, will be fetched on next /me call)
-    setAuth({ id: '', email: '', role }, token)
+    const payload = decodeJwtPayload(token)
+    const id = (payload?.sub as string | undefined) ?? ''
+    const email = (payload?.email as string | undefined) ?? ''
+
+    setAuth({ id, email, role }, token)
 
     if (isNew) {
       router.replace('/retailer/onboarding')

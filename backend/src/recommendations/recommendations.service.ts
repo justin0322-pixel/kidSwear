@@ -76,6 +76,14 @@ export class RecommendationsService {
     return res.json() as Promise<SearchResponse>
   }
 
+  async similarProducts(productId: number, limit: number): Promise<SearchResponse> {
+    const res = await fetch(
+      `${this.recommenderUrl}/recommendations/similar/${productId}?limit=${limit}`,
+    )
+    if (!res.ok) throw new InternalServerErrorException('推薦服務錯誤')
+    return res.json() as Promise<SearchResponse>
+  }
+
   async suggestTags(buffer: Buffer, mimetype: string, filename: string): Promise<TagSuggestion[]> {
     const formData = new FormData()
     formData.append('file', new Blob([new Uint8Array(buffer)], { type: mimetype }), filename)

@@ -9,6 +9,7 @@ import { useShops } from '@/hooks/use-shops'
 import { Navbar } from '@/components/layout/Navbar'
 import { api } from '@/lib/api'
 import type { SearchResultItem } from '@/hooks/use-search'
+import { useRecentlyViewed } from '@/hooks/use-recently-viewed'
 
 type ForYouResponse = { items: SearchResultItem[]; total: number; source: string }
 
@@ -37,6 +38,7 @@ export default function RetailerHome() {
   const { data: orders } = useOrders({ status: 'pending' })
   const { data: shopsData } = useShops({ page: 1 })
   const { data: forYou, isLoading: recLoading } = useForYou(8)
+  const { items: recentItems } = useRecentlyViewed()
 
   const cartCount = cart?.items.reduce((sum, i) => sum + i.quantity, 0) ?? 0
   const pendingOrderCount = orders?.total ?? 0
@@ -67,6 +69,44 @@ export default function RetailerHome() {
             <p className="text-xs text-gray-400 mt-0.5">筆</p>
           </button>
         </div>
+
+        {/* 最近瀏覽 */}
+        {recentItems.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium text-gray-500 mb-3">最近瀏覽</h2>
+            <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+              {recentItems.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/products/${item.id}`}
+                  className="shrink-0 w-28 bg-white rounded-lg border overflow-hidden hover:shadow-sm transition-shadow group"
+                >
+                  <div className="aspect-square bg-gray-100 overflow-hidden">
+                    {item.primaryImageUrl ? (
+                      <img
+                        src={item.primaryImageUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-2xl">
+                        👕
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2">
+                    <p className="text-xs font-medium text-gray-900 line-clamp-2 leading-snug">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      NT${Number(item.basePrice).toLocaleString('zh-TW')}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 快速入口 */}
         <div>

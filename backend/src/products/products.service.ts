@@ -115,7 +115,9 @@ export class ProductsService {
     const includeInactive = query.includeInactive === 'true'
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
-      ...(includeInactive ? {} : { status: ProductStatus.active }),
+      ...(query.status
+        ? { status: query.status as ProductStatus }
+        : includeInactive ? {} : { status: ProductStatus.active }),
       ...(query.shopId && { shopId: BigInt(query.shopId) }),
       ...(query.category && { category: query.category }),
       ...(query.search && { name: { contains: query.search, mode: 'insensitive' as const } }),
@@ -138,7 +140,7 @@ export class ProductsService {
           category: true,
           basePrice: true,
           images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
-          productTags: { select: { tag: { select: { name: true } } } },
+          productTags: { select: { tag: { select: { id: true, name: true, color: true } } } },
           shop: { select: { id: true, name: true } },
           variants: { select: { stock: true, reservedStock: true, lowStockThreshold: true } },
         },
@@ -155,7 +157,11 @@ export class ProductsService {
         category: p.category,
         basePrice: p.basePrice.toString(),
         primaryImageUrl: p.images[0]?.url ?? null,
-        tags: p.productTags.map((pt) => pt.tag.name),
+        tags: p.productTags.map((pt) => ({
+          id: Number(pt.tag.id),
+          name: pt.tag.name,
+          color: pt.tag.color,
+        })),
         shop: { id: p.shop.id.toString(), name: p.shop.name },
         lowStockCount: p.variants.filter(
           (v) => v.stock - v.reservedStock <= v.lowStockThreshold,
@@ -174,7 +180,7 @@ export class ProductsService {
         images: { orderBy: { sortOrder: 'asc' } },
         variants: { orderBy: [{ size: 'asc' }, { color: 'asc' }] },
         productTags: { include: { tag: true } },
-        shop: { select: { id: true, name: true } },
+        shop: { select: { id: true, name: true, slug: true } },
       },
     })
     if (!product) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品不存在' })
@@ -205,7 +211,7 @@ export class ProductsService {
         stock: v.stock,
       })),
       tags: product.productTags.map((pt) => pt.tag.name),
-      shop: { id: product.shop.id.toString(), name: product.shop.name },
+      shop: { id: product.shop.id.toString(), name: product.shop.name, slug: product.shop.slug },
     }
   }
 
@@ -337,6 +343,79 @@ export class ProductsService {
       where: { id: productId },
       data: { status },
     })
+  }
+
+  async addVariant(
+    userId: bigint,
+    productId: bigint,
+    dto: { size: string; color: string; stock: number; price?: string },
+  ) {
+    await this.verifyOwnership(userId, productId)
+    const product = await this.prisma.product.findUniqueOrThrow({ where: { id: productId } })
+    const skuBase = (product.skuPrefix ?? `P${productId}`).toUpperCase()
+    const count = await this.prisma.productVariant.count({ where: { productId } })
+    const sku = `${skuBase}-${dto.size}-${dto.color}-${count}`.toUpperCase().replace(/\s+/g, '')
+    const variant = await this.prisma.productVariant.create({
+      data: {
+        productId,
+        sku,
+        size: dto.size,
+        color: dto.color,
+        stock: dto.stock,
+        priceOverride: dto.price ? new Prisma.Decimal(dto.price) : undefined,
+      },
+    })
+    return {
+      id: variant.id.toString(),
+      sku: variant.sku,
+      size: variant.size,
+      color: variant.color,
+      price: (variant.priceOverride ?? product.basePrice).toString(),
+      stock: variant.stock,
+    }
+  }
+
+  async updateVariant(
+    userId: bigint,
+    productId: bigint,
+    variantId: bigint,
+    dto: { stock?: number; price?: string },
+  ) {
+    await this.verifyOwnership(userId, productId)
+    const variant = await this.prisma.productVariant.findFirst({
+      where: { id: variantId, productId },
+    })
+    if (!variant) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '規格不存在' })
+
+    const updated = await this.prisma.productVariant.update({
+      where: { id: variantId },
+      data: {
+        ...(dto.stock !== undefined && { stock: dto.stock }),
+        ...(dto.price !== undefined && { priceOverride: new Prisma.Decimal(dto.price) }),
+      },
+    })
+    const product = await this.prisma.product.findUniqueOrThrow({ where: { id: productId } })
+    return {
+      id: updated.id.toString(),
+      sku: updated.sku,
+      size: updated.size,
+      color: updated.color,
+      price: (updated.priceOverride ?? product.basePrice).toString(),
+      stock: updated.stock,
+    }
+  }
+
+  async removeVariant(userId: bigint, productId: bigint, variantId: bigint): Promise<void> {
+    await this.verifyOwnership(userId, productId)
+    const variant = await this.prisma.productVariant.findFirst({
+      where: { id: variantId, productId },
+      select: { id: true, reservedStock: true },
+    })
+    if (!variant) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '規格不存在' })
+    if (variant.reservedStock > 0) {
+      throw new ForbiddenException({ code: 'VARIANT_HAS_RESERVED_STOCK', message: '此規格有未出貨訂單，無法刪除' })
+    }
+    await this.prisma.productVariant.delete({ where: { id: variantId } })
   }
 
   private async getShopOrFail(userId: bigint) {

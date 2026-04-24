@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMyShop, useUpdateMyShop } from '@/hooks/use-shop'
+import { ImageUploader } from '@/components/wholesaler/ImageUploader'
 import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +14,6 @@ import { Label } from '@/components/ui/label'
 const schema = z.object({
   name: z.string().min(1, '請填寫商城名稱'),
   description: z.string().optional(),
-  logoUrl: z.string().url('請輸入有效網址').or(z.literal('')).optional(),
-  bannerUrl: z.string().url('請輸入有效網址').or(z.literal('')).optional(),
   minOrderAmount: z
     .string()
     .regex(/^$|^\d+(\.\d{1,2})?$/, '請輸入有效金額')
@@ -25,15 +23,17 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export default function WholesalerShopPage() {
-  const router = useRouter()
   const { data: shop, isLoading } = useMyShop()
   const { mutate: updateShop, isPending, isSuccess, error } = useUpdateMyShop()
+
+  const [logoUrl, setLogoUrl] = useState('')
+  const [bannerUrl, setBannerUrl] = useState('')
 
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isDirty },
+    formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   useEffect(() => {
@@ -41,10 +41,10 @@ export default function WholesalerShopPage() {
       reset({
         name: shop.name,
         description: shop.description ?? '',
-        logoUrl: shop.logoUrl ?? '',
-        bannerUrl: shop.bannerUrl ?? '',
         minOrderAmount: shop.minOrderAmount === '0.00' ? '' : shop.minOrderAmount,
       })
+      setLogoUrl(shop.logoUrl ?? '')
+      setBannerUrl(shop.bannerUrl ?? '')
     }
   }, [shop, reset])
 
@@ -52,8 +52,8 @@ export default function WholesalerShopPage() {
     updateShop({
       name: values.name,
       description: values.description || undefined,
-      logoUrl: values.logoUrl || undefined,
-      bannerUrl: values.bannerUrl || undefined,
+      logoUrl: logoUrl || undefined,
+      bannerUrl: bannerUrl || undefined,
       minOrderAmount: values.minOrderAmount || undefined,
     })
   }
@@ -76,6 +76,7 @@ export default function WholesalerShopPage() {
 
         {shop && (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            {/* 基本資訊 */}
             <section className="bg-white rounded-lg border p-6 space-y-4">
               <h2 className="font-semibold text-gray-900">基本資訊</h2>
 
@@ -109,47 +110,40 @@ export default function WholesalerShopPage() {
               </div>
             </section>
 
-            <section className="bg-white rounded-lg border p-6 space-y-4">
-              <h2 className="font-semibold text-gray-900">圖片設定</h2>
-              <p className="text-xs text-gray-400">目前以網址方式設定，圖片上傳功能即將推出</p>
-
-              <div className="space-y-1">
-                <Label htmlFor="logoUrl">Logo 網址</Label>
-                <Input
-                  id="logoUrl"
-                  placeholder="https://..."
-                  {...register('logoUrl')}
-                />
-                {errors.logoUrl && (
-                  <p className="text-xs text-red-500">{errors.logoUrl.message}</p>
-                )}
-                {shop.logoUrl && (
+            {/* Logo */}
+            <section className="bg-white rounded-lg border p-6 space-y-3">
+              <h2 className="font-semibold text-gray-900">Logo</h2>
+              {logoUrl && (
+                <div className="flex items-center gap-3">
                   <img
-                    src={shop.logoUrl}
-                    alt="logo preview"
-                    className="mt-2 h-16 w-16 rounded-lg object-cover border"
+                    src={logoUrl}
+                    alt="logo"
+                    className="h-16 w-16 rounded-lg object-cover border bg-gray-50"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                   />
-                )}
-              </div>
+                  <p className="text-xs text-gray-400 break-all flex-1">{logoUrl}</p>
+                </div>
+              )}
+              <ImageUploader onUploaded={(url) => setLogoUrl(url)} />
+              <p className="text-xs text-gray-400">建議尺寸 200×200，圓形顯示</p>
+            </section>
 
-              <div className="space-y-1">
-                <Label htmlFor="bannerUrl">Banner 網址</Label>
-                <Input
-                  id="bannerUrl"
-                  placeholder="https://..."
-                  {...register('bannerUrl')}
-                />
-                {errors.bannerUrl && (
-                  <p className="text-xs text-red-500">{errors.bannerUrl.message}</p>
-                )}
-                {shop.bannerUrl && (
+            {/* Banner */}
+            <section className="bg-white rounded-lg border p-6 space-y-3">
+              <h2 className="font-semibold text-gray-900">Banner</h2>
+              {bannerUrl && (
+                <div className="space-y-1">
                   <img
-                    src={shop.bannerUrl}
-                    alt="banner preview"
-                    className="mt-2 w-full h-24 rounded-lg object-cover border"
+                    src={bannerUrl}
+                    alt="banner"
+                    className="w-full h-28 rounded-lg object-cover border bg-gray-50"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                   />
-                )}
-              </div>
+                  <p className="text-xs text-gray-400 break-all">{bannerUrl}</p>
+                </div>
+              )}
+              <ImageUploader onUploaded={(url) => setBannerUrl(url)} />
+              <p className="text-xs text-gray-400">建議尺寸 1200×400，橫幅顯示於商城頂部</p>
             </section>
 
             <div className="pb-2 space-y-2">
@@ -162,11 +156,7 @@ export default function WholesalerShopPage() {
                     ?.data?.error?.message ?? '更新失敗，請稍後再試'}
                 </p>
               )}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isPending || !isDirty}
-              >
+              <Button type="submit" className="w-full" disabled={isPending}>
                 {isPending ? '儲存中...' : '儲存設定'}
               </Button>
             </div>

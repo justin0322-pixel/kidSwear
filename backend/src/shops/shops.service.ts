@@ -21,17 +21,20 @@ type ShopRow = Prisma.ShopGetPayload<{ select: typeof SHOP_SELECT }>
 export class ShopsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(page: number, pageSize: number): Promise<{ items: ReturnType<ShopsService['format']>[]; total: number }> {
+  async findAll(
+    page: number,
+    pageSize: number,
+    search?: string,
+  ): Promise<{ items: ReturnType<ShopsService['format']>[]; total: number }> {
     const skip = (page - 1) * pageSize
+    const where: Prisma.ShopWhereInput = {
+      isActive: true,
+      deletedAt: null,
+      ...(search && { name: { contains: search, mode: 'insensitive' as const } }),
+    }
     const [items, total] = await Promise.all([
-      this.prisma.shop.findMany({
-        where: { isActive: true, deletedAt: null },
-        skip,
-        take: pageSize,
-        select: SHOP_SELECT,
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.shop.count({ where: { isActive: true, deletedAt: null } }),
+      this.prisma.shop.findMany({ where, skip, take: pageSize, select: SHOP_SELECT, orderBy: { createdAt: 'desc' } }),
+      this.prisma.shop.count({ where }),
     ])
     return { items: items.map((s) => this.format(s)), total }
   }

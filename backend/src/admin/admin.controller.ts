@@ -31,6 +31,14 @@ export class AdminController {
     if (req.user.role !== UserRole.admin) throw new ForbiddenException()
   }
 
+  @Get('stats')
+  @ApiOperation({ summary: '系統統計數據（管理員）' })
+  async getStats(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    this.assertAdmin(req)
+    const data = await this.adminService.getStats()
+    return { success: true, data }
+  }
+
   @Get('users')
   @ApiOperation({ summary: '取得使用者列表' })
   async listUsers(

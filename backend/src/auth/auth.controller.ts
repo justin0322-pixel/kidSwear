@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Put,
   Query,
@@ -14,8 +16,8 @@ import {
 } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { Request, Response } from 'express'
-import { IsOptional, IsString, MaxLength } from 'class-validator'
-import { UserRole } from '@prisma/client'
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import { OauthProvider, UserRole } from '@prisma/client'
 import { AuthService } from './auth.service'
 import { LoginDto } from './dto/login.dto'
 import { RegisterDto } from './dto/register.dto'
@@ -27,6 +29,12 @@ class UpdateProfileDto {
   @IsOptional() @IsString() @MaxLength(100) shopName?: string
   @IsOptional() @IsString() @MaxLength(50) contactPerson?: string
   @IsOptional() @IsString() shippingAddress?: string
+  @IsOptional() @IsString() @MaxLength(20) phone?: string
+}
+
+class ChangePasswordDto {
+  @IsString() @MinLength(1) currentPassword!: string
+  @IsString() @MinLength(8, { message: '新密碼至少 8 個字元' }) newPassword!: string
 }
 
 @ApiTags('auth')
@@ -93,6 +101,20 @@ export class AuthController {
     res.redirect(this.authService.getLineAuthUrl(state))
   }
 
+  @Get('line/bind')
+  @ApiOperation({ summary: 'LINE OAuth 綁定起始（帶 token query param）' })
+  lineBindStart(@Query('token') token: string, @Res() res: Response): void {
+    try {
+      const payload = this.authService.verifyAccessToken(token)
+      const state = Math.random().toString(36).slice(2)
+      res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000 })
+      res.cookie('oauth_bind_user_id', payload.sub, { httpOnly: true, maxAge: 10 * 60 * 1000 })
+      res.redirect(this.authService.getLineAuthUrl(state))
+    } catch {
+      res.redirect(`${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/retailer/profile?error=bind_failed`)
+    }
+  }
+
   @Get('line/callback')
   @ApiOperation({ summary: 'LINE OAuth 回呼處理' })
   async lineCallback(
@@ -101,12 +123,20 @@ export class AuthController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const cookieState = (req.cookies as Record<string, string | undefined>)['oauth_state']
+    const cookies = req.cookies as Record<string, string | undefined>
+    const cookieState = cookies['oauth_state']
+    const bindUserId = cookies['oauth_bind_user_id']
     res.clearCookie('oauth_state')
+    res.clearCookie('oauth_bind_user_id')
     if (!code || state !== cookieState) {
       res.redirect(
         `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/login?error=oauth_failed`,
       )
+      return
+    }
+    if (bindUserId) {
+      const { redirectUrl } = await this.authService.lineOAuthBind(code, BigInt(bindUserId))
+      res.redirect(redirectUrl)
       return
     }
     const { redirectUrl } = await this.authService.lineOAuthExchange(code, res)
@@ -121,6 +151,20 @@ export class AuthController {
     res.redirect(this.authService.getGoogleAuthUrl(state))
   }
 
+  @Get('google/bind')
+  @ApiOperation({ summary: 'Google OAuth 綁定起始（帶 token query param）' })
+  googleBindStart(@Query('token') token: string, @Res() res: Response): void {
+    try {
+      const payload = this.authService.verifyAccessToken(token)
+      const state = Math.random().toString(36).slice(2)
+      res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000 })
+      res.cookie('oauth_bind_user_id', payload.sub, { httpOnly: true, maxAge: 10 * 60 * 1000 })
+      res.redirect(this.authService.getGoogleAuthUrl(state))
+    } catch {
+      res.redirect(`${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/retailer/profile?error=bind_failed`)
+    }
+  }
+
   @Get('google/callback')
   @ApiOperation({ summary: 'Google OAuth 回呼處理' })
   async googleCallback(
@@ -129,16 +173,59 @@ export class AuthController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const cookieState = (req.cookies as Record<string, string | undefined>)['oauth_state']
+    const cookies = req.cookies as Record<string, string | undefined>
+    const cookieState = cookies['oauth_state']
+    const bindUserId = cookies['oauth_bind_user_id']
     res.clearCookie('oauth_state')
+    res.clearCookie('oauth_bind_user_id')
     if (!code || state !== cookieState) {
       res.redirect(
         `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/login?error=oauth_failed`,
       )
       return
     }
+    if (bindUserId) {
+      const { redirectUrl } = await this.authService.googleOAuthBind(code, BigInt(bindUserId))
+      res.redirect(redirectUrl)
+      return
+    }
     const { redirectUrl } = await this.authService.googleOAuthExchange(code, res)
     res.redirect(redirectUrl)
+  }
+
+  @Get('oauth-accounts')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '取得已綁定的 OAuth 帳號' })
+  async getOAuthAccounts(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    const data = await this.authService.getOAuthAccounts(BigInt(req.user.sub))
+    return { success: true, data }
+  }
+
+  @Delete('oauth-accounts/:provider')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '解除 OAuth 帳號綁定' })
+  async unlinkOAuthAccount(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('provider') provider: string,
+  ): Promise<object> {
+    await this.authService.unlinkOAuthAccount(BigInt(req.user.sub), provider as OauthProvider)
+    return { success: true, data: null }
+  }
+
+  @Put('password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '修改密碼' })
+  async changePassword(
+    @Req() req: Request & { user: JwtPayload },
+    @Body() dto: ChangePasswordDto,
+  ): Promise<object> {
+    await this.authService.changePassword(BigInt(req.user.sub), dto.currentPassword, dto.newPassword)
+    return { success: true, data: null }
   }
 
   @Put('profile')

@@ -197,8 +197,165 @@ export class AuthService {
       id: user.id.toString(),
       email: user.email,
       role: user.role,
+      phone: user.phone ?? null,
       profile,
     }
+  }
+
+  verifyAccessToken(token: string): JwtPayload {
+    try {
+      return this.jwt.verify<JwtPayload>(token, {
+        secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+      })
+    } catch {
+      throw new UnauthorizedException({ code: 'AUTH_TOKEN_INVALID', message: '無效的 Token' })
+    }
+  }
+
+  async getOAuthAccounts(userId: bigint) {
+    const accounts = await this.prisma.userOauthAccount.findMany({
+      where: { userId },
+      select: {
+        provider: true,
+        providerEmail: true,
+        providerName: true,
+        providerAvatar: true,
+        createdAt: true,
+      },
+    })
+    return accounts.map((a) => ({
+      provider: a.provider as string,
+      providerEmail: a.providerEmail,
+      providerName: a.providerName,
+      providerAvatar: a.providerAvatar,
+      linkedAt: a.createdAt.toISOString(),
+    }))
+  }
+
+  async unlinkOAuthAccount(userId: bigint, provider: OauthProvider): Promise<void> {
+    await this.prisma.userOauthAccount.deleteMany({ where: { userId, provider } })
+  }
+
+  async lineOAuthBind(code: string, userId: bigint): Promise<{ redirectUrl: string }> {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000')
+
+    const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.config.getOrThrow<string>('LINE_CALLBACK_URL'),
+        client_id: this.config.getOrThrow<string>('LINE_CHANNEL_ID'),
+        client_secret: this.config.getOrThrow<string>('LINE_CHANNEL_SECRET'),
+      }),
+    })
+
+    if (!tokenRes.ok) {
+      return { redirectUrl: `${frontendUrl}/retailer/profile?error=bind_failed` }
+    }
+
+    type LineTokenResponse = { access_token: string }
+    const tokenData = (await tokenRes.json()) as LineTokenResponse
+
+    const profileRes = await fetch('https://api.line.me/v2/profile', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    })
+    if (!profileRes.ok) {
+      return { redirectUrl: `${frontendUrl}/retailer/profile?error=bind_failed` }
+    }
+
+    type LineProfile = { userId: string; displayName: string; pictureUrl?: string }
+    const lineProfile = (await profileRes.json()) as LineProfile
+
+    const existing = await this.prisma.userOauthAccount.findUnique({
+      where: { provider_providerUserId: { provider: OauthProvider.line, providerUserId: lineProfile.userId } },
+    })
+    if (existing && existing.userId !== userId) {
+      return { redirectUrl: `${frontendUrl}/retailer/profile?error=oauth_already_bound` }
+    }
+
+    await this.prisma.userOauthAccount.upsert({
+      where: { provider_providerUserId: { provider: OauthProvider.line, providerUserId: lineProfile.userId } },
+      create: {
+        userId,
+        provider: OauthProvider.line,
+        providerUserId: lineProfile.userId,
+        providerName: lineProfile.displayName,
+        providerAvatar: lineProfile.pictureUrl,
+        accessToken: tokenData.access_token,
+      },
+      update: {
+        userId,
+        providerName: lineProfile.displayName,
+        providerAvatar: lineProfile.pictureUrl,
+        accessToken: tokenData.access_token,
+      },
+    })
+
+    return { redirectUrl: `${frontendUrl}/retailer/profile?bound=line` }
+  }
+
+  async googleOAuthBind(code: string, userId: bigint): Promise<{ redirectUrl: string }> {
+    const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000')
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: this.config.getOrThrow<string>('GOOGLE_CALLBACK_URL'),
+        client_id: this.config.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+        client_secret: this.config.getOrThrow<string>('GOOGLE_CLIENT_SECRET'),
+      }),
+    })
+
+    if (!tokenRes.ok) {
+      return { redirectUrl: `${frontendUrl}/retailer/profile?error=bind_failed` }
+    }
+
+    type GoogleTokenResponse = { access_token: string; id_token: string }
+    const tokenData = (await tokenRes.json()) as GoogleTokenResponse
+
+    type GoogleIdToken = { sub: string; email?: string; name?: string; picture?: string }
+    let googleUser: GoogleIdToken
+    try {
+      googleUser = JSON.parse(
+        Buffer.from(tokenData.id_token.split('.')[1], 'base64url').toString(),
+      ) as GoogleIdToken
+    } catch {
+      return { redirectUrl: `${frontendUrl}/retailer/profile?error=bind_failed` }
+    }
+
+    const existing = await this.prisma.userOauthAccount.findUnique({
+      where: { provider_providerUserId: { provider: OauthProvider.google, providerUserId: googleUser.sub } },
+    })
+    if (existing && existing.userId !== userId) {
+      return { redirectUrl: `${frontendUrl}/retailer/profile?error=oauth_already_bound` }
+    }
+
+    await this.prisma.userOauthAccount.upsert({
+      where: { provider_providerUserId: { provider: OauthProvider.google, providerUserId: googleUser.sub } },
+      create: {
+        userId,
+        provider: OauthProvider.google,
+        providerUserId: googleUser.sub,
+        providerEmail: googleUser.email,
+        providerName: googleUser.name,
+        providerAvatar: googleUser.picture,
+        accessToken: tokenData.access_token,
+      },
+      update: {
+        userId,
+        providerEmail: googleUser.email,
+        providerName: googleUser.name,
+        providerAvatar: googleUser.picture,
+        accessToken: tokenData.access_token,
+      },
+    })
+
+    return { redirectUrl: `${frontendUrl}/retailer/profile?bound=google` }
   }
 
   getLineAuthUrl(state: string): string {
@@ -399,6 +556,25 @@ export class AuthService {
     return {
       redirectUrl: `${frontendUrl}/auth/callback?token=${accessToken}&role=retailer&redirect=${encodeURIComponent('/retailer/onboarding')}&new=1`,
     }
+  }
+
+  async changePassword(userId: bigint, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.users.findById(userId)
+    if (!user?.passwordHash) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '此帳號使用第三方登入，無法設定密碼',
+      })
+    }
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash)
+    if (!valid) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '目前密碼輸入錯誤',
+      })
+    }
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_COST)
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } })
   }
 
   private issueTokens(id: bigint, email: string, role: UserRole, res: Response): AuthResult {

@@ -60,6 +60,19 @@ export class RecommendationsController {
     return { success: true, data }
   }
 
+  @Get('similar')
+  @ApiOperation({ summary: '取得視覺相似商品（CLIP pgvector）' })
+  async getSimilar(
+    @Query('productId') productId: string,
+    @Query('limit') limit = '8',
+  ): Promise<object> {
+    const data = await this.service.similarProducts(
+      parseInt(productId, 10),
+      Math.min(50, Math.max(1, parseInt(limit, 10))),
+    )
+    return { success: true, data }
+  }
+
   @Post('search/text')
   @ApiOperation({ summary: '以文字語意搜尋商品（CLIP）' })
   async searchByText(@Body() dto: TextSearchDto): Promise<object> {

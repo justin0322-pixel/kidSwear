@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import type { SearchResultItem } from '@/hooks/use-search'
+import { useRecentlyViewed } from '@/hooks/use-recently-viewed'
 
 type SimilarResponse = { items: SearchResultItem[]; total: number }
 
@@ -41,12 +42,27 @@ export default function ProductDetailPage() {
   const { data: product, isLoading, isError } = useProduct(Number(id))
   const { mutate: addToCart, isPending: addingToCart } = useAddToCart()
   const { data: similarItems } = useSimilarProducts(id, !!id && !isLoading && !isError)
+  const { trackView } = useRecentlyViewed()
 
   const [selectedImage, setSelectedImage] = useState(0)
   const [selectedSize, setSelectedSize] = useState<string | null>(null)
   const [selectedColor, setSelectedColor] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [addedFeedback, setAddedFeedback] = useState(false)
+
+  useEffect(() => {
+    if (!product) return
+    trackView({
+      id: Number(id),
+      name: product.name,
+      basePrice: product.basePrice,
+      primaryImageUrl: product.images[0]?.url ?? null,
+      shopName: product.shop.name,
+      shopSlug: product.shop.slug,
+    })
+  // trackView is stable (useCallback), run only when product first loads
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id, trackView])
 
   if (isError) {
     return (
@@ -108,7 +124,7 @@ export default function ProductDetailPage() {
             <span>/</span>
             <button
               type="button"
-              onClick={() => router.push(`/shops/${product.shop.id}`)}
+              onClick={() => router.push(`/shops/${product.shop.slug}`)}
               className="text-gray-500 hover:text-gray-800 transition-colors"
             >
               {product.shop.name}

@@ -107,13 +107,18 @@ export const WHOLESALER_TRANSITIONS: Partial<Record<OrderStatus, { next: OrderSt
   shipped: [{ next: 'completed', label: '確認完成' }],
 }
 
-export function useOrders(params: { page?: number; status?: string } = {}) {
-  const { page = 1, status } = params
+export function useOrders(params: { page?: number; status?: string; search?: string } = {}) {
+  const { page = 1, status, search } = params
   return useQuery({
-    queryKey: ['orders', { page, status }],
+    queryKey: ['orders', { page, status, search }],
     queryFn: async () => {
       const res = await api.get<OrdersApiResponse>('/orders', {
-        params: { page, pageSize: 20, ...(status && { status }) },
+        params: {
+          page,
+          pageSize: 20,
+          ...(status && { status }),
+          ...(search && { search }),
+        },
       })
       const { data: items, pagination } = res.data
       return { items, total: pagination.total, page: pagination.page, pageSize: pagination.pageSize }

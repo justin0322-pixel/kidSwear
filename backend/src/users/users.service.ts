@@ -32,8 +32,14 @@ export class UsersService {
 
   async updateRetailerProfile(
     userId: bigint,
-    dto: { shopName?: string; contactPerson?: string; shippingAddress?: string },
+    dto: { shopName?: string; contactPerson?: string; shippingAddress?: string; phone?: string },
   ): Promise<Retailer> {
+    if (dto.phone !== undefined) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { phone: dto.phone || null },
+      })
+    }
     return this.prisma.retailer.update({
       where: { userId },
       data: {

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth-store'
+import { useNotificationStore } from '@/stores/notification-store'
 import { toast } from '@/stores/toast-store'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'http://localhost:4000'
@@ -17,6 +18,7 @@ type NotificationPayload = {
 
 export function useNotifications(): void {
   const accessToken = useAuthStore((s) => s.accessToken)
+  const addNotification = useNotificationStore((s) => s.add)
   const socketRef = useRef<Socket | null>(null)
 
   useEffect(() => {
@@ -34,6 +36,12 @@ export function useNotifications(): void {
     })
 
     socket.on('notification', (payload: NotificationPayload) => {
+      addNotification({
+        type: payload.type,
+        orderId: payload.orderId,
+        orderNumber: payload.orderNumber,
+        message: payload.message,
+      })
       toast({ title: payload.message })
     })
 
@@ -43,5 +51,5 @@ export function useNotifications(): void {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [accessToken])
+  }, [accessToken, addNotification])
 }

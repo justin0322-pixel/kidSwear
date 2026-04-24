@@ -46,4 +46,9 @@ export class QueryProductDto {
   @IsOptional()
   @IsString()
   includeInactive?: string
+
+  @ApiPropertyOptional({ description: '直接篩選狀態：active | draft | sold_out | archived' })
+  @IsOptional()
+  @IsString()
+  status?: string
 }

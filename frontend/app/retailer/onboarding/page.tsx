@@ -12,6 +12,11 @@ import { Label } from '@/components/ui/label'
 const schema = z.object({
   shopName: z.string().min(1, '請填寫店名').max(100),
   contactPerson: z.string().min(1, '請填寫聯絡人').max(50),
+  phone: z
+    .string()
+    .regex(/^(?:0\d{8,9}|\+886\d{9}|886\d{9})$/, '請輸入有效的台灣電話號碼')
+    .optional()
+    .or(z.literal('')),
   shippingAddress: z.string().min(5, '請填寫完整地址'),
 })
 
@@ -28,9 +33,10 @@ export default function RetailerOnboardingPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   const onSubmit = (values: FormValues) => {
-    updateProfile(values, {
-      onSuccess: () => router.replace('/retailer/home'),
-    })
+    updateProfile(
+      { ...values, phone: values.phone || undefined },
+      { onSuccess: () => router.replace('/retailer/home') },
+    )
   }
 
   return (
@@ -55,6 +61,14 @@ export default function RetailerOnboardingPage() {
             <Input id="contactPerson" placeholder="您的姓名" {...register('contactPerson')} />
             {errors.contactPerson && (
               <p className="text-xs text-red-500">{errors.contactPerson.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="phone">聯絡電話（選填）</Label>
+            <Input id="phone" placeholder="0912345678" {...register('phone')} />
+            {errors.phone && (
+              <p className="text-xs text-red-500">{errors.phone.message}</p>
             )}
           </div>
 

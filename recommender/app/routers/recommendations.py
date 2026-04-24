@@ -1,11 +1,22 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.algorithms.clip_search import ClipSearcher
 from app.algorithms.llm_explain import LLMExplainer
 from app.algorithms.svd_rec import SvdRecommender
 from app.database import get_db
+from app.models.schemas import SearchResponse
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
+
+_FETCH_EMBEDDING_SQL = text("""
+    SELECT image_embedding::text
+    FROM products
+    WHERE id = :product_id
+      AND deleted_at IS NULL
+      AND image_embedding IS NOT NULL
+""")
 
 
 @router.get(
@@ -28,3 +39,29 @@ async def recommend_for_user(
             item["reason"] = reason
 
     return result
+
+
+@router.get(
+    "/similar/{product_id}",
+    response_model=SearchResponse,
+    summary="以視覺相似度找到相關商品（CLIP pgvector）",
+)
+async def similar_products(
+    product_id: int,
+    limit: int = Query(default=8, ge=1, le=50),
+    db: Session = Depends(get_db),
+) -> SearchResponse:
+    row = db.execute(_FETCH_EMBEDDING_SQL, {"product_id": product_id}).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="商品不存在或尚未建立向量索引")
+
+    import numpy as np
+    raw = row[0].strip("[]").split(",")
+    embedding = np.array([float(v) for v in raw], dtype=np.float32)
+
+    searcher = ClipSearcher.get_instance()
+    result = searcher.search(embedding, db, limit=limit + 1)
+
+    # Exclude the source product itself from results
+    filtered = [item for item in result.items if item.id != str(product_id)][:limit]
+    return SearchResponse(items=filtered, total=len(filtered))

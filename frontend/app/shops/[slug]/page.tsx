@@ -6,6 +6,9 @@ import { useShopBySlug } from '@/hooks/use-shops'
 import { Navbar } from '@/components/layout/Navbar'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useProduct } from '@/hooks/use-products'
+import { useAddToCart } from '@/hooks/use-cart'
+import { useAuthStore } from '@/stores/auth-store'
 import type { Product } from '@/hooks/use-products'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,14 +39,252 @@ function useShopProducts(shopId: string | undefined, params: { page: number; cat
   })
 }
 
+// ─── Quick-add modal ─────────────────────────────────────────────────────────
+
+type QuickAddModalProps = {
+  productId: number
+  onClose: () => void
+}
+
+function QuickAddModal({ productId, onClose }: QuickAddModalProps) {
+  const router = useRouter()
+  const { user } = useAuthStore()
+  const { data: product, isLoading } = useProduct(productId)
+  const { mutate: addToCart, isPending } = useAddToCart()
+
+  const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [selectedColor, setSelectedColor] = useState<string | null>(null)
+  const [quantity, setQuantity] = useState(1)
+  const [done, setDone] = useState(false)
+
+  const sizes = product
+    ? Array.from(new Set((product.variants ?? []).map((v) => v.size)))
+    : []
+
+  const colors = product
+    ? Array.from(
+        new Set(
+          (product.variants ?? [])
+            .filter((v) => !selectedSize || v.size === selectedSize)
+            .map((v) => v.color),
+        ),
+      )
+    : []
+
+  const selectedVariant =
+    product?.variants?.find((v) => v.size === selectedSize && v.color === selectedColor) ?? null
+
+  const handleAdd = () => {
+    if (!user) { router.push('/login'); return }
+    if (!selectedVariant) return
+    addToCart(
+      { variantId: Number(selectedVariant.id), quantity },
+      {
+        onSuccess: () => {
+          setDone(true)
+          setTimeout(onClose, 900)
+        },
+      },
+    )
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* panel */}
+      <div
+        className="relative z-10 bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 space-y-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {product?.images[0]?.url && (
+              <img
+                src={product.images[0].url}
+                alt={product.name}
+                className="w-14 h-14 rounded-lg object-cover bg-gray-100 shrink-0"
+              />
+            )}
+            <div className="min-w-0">
+              {isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-4 w-32 bg-gray-100 rounded animate-pulse" />
+                  <div className="h-4 w-16 bg-gray-100 rounded animate-pulse" />
+                </div>
+              ) : (
+                <>
+                  <p className="font-semibold text-gray-900 line-clamp-2 text-sm">{product?.name}</p>
+                  <p className="text-base font-bold text-gray-900 mt-0.5">
+                    NT${Number(product?.basePrice ?? 0).toLocaleString('zh-TW')}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none shrink-0 mt-0.5"
+            aria-label="關閉"
+          >
+            ×
+          </button>
+        </div>
+
+        {isLoading && (
+          <div className="space-y-3">
+            <div className="h-4 w-16 bg-gray-100 rounded animate-pulse" />
+            <div className="flex gap-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-9 w-14 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!isLoading && product && (
+          <>
+            {/* 尺寸 */}
+            {sizes.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">尺寸</p>
+                <div className="flex flex-wrap gap-2">
+                  {sizes.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => { setSelectedSize(size); setSelectedColor(null) }}
+                      className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                        selectedSize === size
+                          ? 'border-gray-900 bg-gray-900 text-white'
+                          : 'border-gray-200 text-gray-700 hover:border-gray-400'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 顏色 */}
+            {selectedSize && colors.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">顏色</p>
+                <div className="flex flex-wrap gap-2">
+                  {colors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setSelectedColor(color)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                        selectedColor === color
+                          ? 'border-gray-900 bg-gray-900 text-white'
+                          : 'border-gray-200 text-gray-700 hover:border-gray-400'
+                      }`}
+                    >
+                      {color}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 庫存 */}
+            {selectedVariant && (
+              <p className={`text-xs ${selectedVariant.stock > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {selectedVariant.stock > 0 ? `庫存 ${selectedVariant.stock} 件` : '缺貨中'}
+              </p>
+            )}
+
+            {/* 數量 + 加入按鈕 */}
+            <div className="flex items-center gap-3 pt-1">
+              {selectedVariant && selectedVariant.stock > 0 && (
+                <div className="flex items-center border rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    className="px-3 py-2 text-gray-500 hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    −
+                  </button>
+                  <span className="px-3 py-2 text-sm font-medium min-w-[2.5rem] text-center tabular-nums">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.min(selectedVariant.stock, q + 1))}
+                    className="px-3 py-2 text-gray-500 hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
+
+              <Button
+                className="flex-1"
+                disabled={!selectedVariant || selectedVariant.stock === 0 || isPending || done}
+                onClick={handleAdd}
+              >
+                {done
+                  ? '✓ 已加入'
+                  : isPending
+                  ? '加入中...'
+                  : !selectedSize
+                  ? '請選擇尺寸'
+                  : !selectedColor
+                  ? '請選擇顏色'
+                  : selectedVariant?.stock === 0
+                  ? '缺貨中'
+                  : '加入購物車'}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Cart icon SVG ────────────────────────────────────────────────────────────
+
+function CartIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-4 h-4"
+    >
+      <circle cx="9" cy="21" r="1" />
+      <circle cx="20" cy="21" r="1" />
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function ShopPage() {
   const router = useRouter()
   const { slug } = useParams<{ slug: string }>()
+  const { user } = useAuthStore()
 
   const [page, setPage] = useState(1)
   const [category, setCategory] = useState('全部')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  const [quickAddId, setQuickAddId] = useState<number | null>(null)
 
   const { data: shop, isLoading: shopLoading, isError: shopError } = useShopBySlug(slug)
   const { data: products, isLoading: productsLoading } = useShopProducts(shop?.id, { page, category, search })
@@ -57,6 +298,12 @@ export default function ShopPage() {
   const handleCategoryChange = (cat: string) => {
     setCategory(cat)
     setPage(1)
+  }
+
+  const openQuickAdd = (e: React.MouseEvent, productId: number) => {
+    e.stopPropagation()
+    if (!user) { router.push('/login'); return }
+    setQuickAddId(productId)
   }
 
   if (shopError) {
@@ -160,41 +407,52 @@ export default function ShopPage() {
             <p className="text-sm text-gray-500">共 {products.pagination.total} 件商品</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {products.data.map((product) => (
-                <button
-                  key={product.id}
-                  type="button"
-                  onClick={() => router.push(`/products/${product.id}`)}
-                  className="bg-white rounded-lg border overflow-hidden text-left hover:shadow-md hover:border-gray-300 transition-all group"
-                >
-                  <div className="aspect-square bg-gray-100 overflow-hidden">
-                    {product.primaryImageUrl ? (
-                      <img
-                        src={product.primaryImageUrl}
-                        alt={product.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">
-                        👕
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-medium text-gray-900 line-clamp-2">{product.name}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      NT${Number(product.basePrice).toLocaleString('zh-TW')}
-                    </p>
-                    {product.tags.length > 0 && (
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {product.tags.slice(0, 2).map((tag) => (
-                          <span key={tag.id} className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
-                            {tag.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </button>
+                <div key={product.id} className="relative group">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/products/${product.id}`)}
+                    className="w-full bg-white rounded-lg border overflow-hidden text-left hover:shadow-md hover:border-gray-300 transition-all"
+                  >
+                    <div className="aspect-square bg-gray-100 overflow-hidden">
+                      {product.primaryImageUrl ? (
+                        <img
+                          src={product.primaryImageUrl}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">
+                          👕
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 pb-4">
+                      <p className="text-sm font-medium text-gray-900 line-clamp-2">{product.name}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        NT${Number(product.basePrice).toLocaleString('zh-TW')}
+                      </p>
+                      {product.tags.length > 0 && (
+                        <div className="flex gap-1 mt-2 flex-wrap">
+                          {product.tags.slice(0, 2).map((tag) => (
+                            <span key={tag.id} className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* 快速加購按鈕 */}
+                  <button
+                    type="button"
+                    onClick={(e) => openQuickAdd(e, Number(product.id))}
+                    className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-700 focus:opacity-100"
+                    aria-label="快速加入購物車"
+                  >
+                    <CartIcon />
+                  </button>
+                </div>
               ))}
             </div>
 
@@ -212,6 +470,13 @@ export default function ShopPage() {
           </>
         )}
       </main>
+
+      {quickAddId !== null && (
+        <QuickAddModal
+          productId={quickAddId}
+          onClose={() => setQuickAddId(null)}
+        />
+      )}
     </div>
   )
 }

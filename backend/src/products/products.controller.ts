@@ -15,6 +15,20 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common'
+import { IsInt, IsOptional, IsString, Min, MaxLength } from 'class-validator'
+import { Type } from 'class-transformer'
+
+class AddVariantDto {
+  @IsString() @MaxLength(20) size!: string
+  @IsString() @MaxLength(30) color!: string
+  @IsInt() @Min(0) @Type(() => Number) stock!: number
+  @IsOptional() @IsString() price?: string
+}
+
+class UpdateVariantDto {
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) stock?: number
+  @IsOptional() @IsString() price?: string
+}
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { ProductStatus, UserRole } from '@prisma/client'
 import { IsIn } from 'class-validator'
@@ -138,5 +152,51 @@ export class ProductsController {
   ): Promise<void> {
     if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
     await this.productsService.remove(BigInt(req.user.sub), BigInt(id))
+  }
+
+  @Post(':id/variants')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '新增商品規格（批發商）' })
+  async addVariant(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+    @Body() dto: AddVariantDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.productsService.addVariant(BigInt(req.user.sub), BigInt(id), dto)
+    return { success: true, data }
+  }
+
+  @Patch(':id/variants/:variantId')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '更新商品規格庫存／價格（批發商）' })
+  async updateVariant(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+    @Body() dto: UpdateVariantDto,
+  ): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    const data = await this.productsService.updateVariant(
+      BigInt(req.user.sub), BigInt(id), BigInt(variantId), dto,
+    )
+    return { success: true, data }
+  }
+
+  @Delete(':id/variants/:variantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '刪除商品規格（批發商）' })
+  async removeVariant(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+    @Param('variantId') variantId: string,
+  ): Promise<void> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    await this.productsService.removeVariant(BigInt(req.user.sub), BigInt(id), BigInt(variantId))
   }
 }

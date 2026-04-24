@@ -147,6 +147,9 @@ StockLowEvent → NotificationsListener
 - **Google OAuth**（Authorization Code Flow + id_token 解碼，無 Passport 依賴）
 - Access Token 15 分鐘 + Refresh Token 30 天（httpOnly Cookie）
 - 新用戶 Onboarding（補填店名、聯絡人、收件地址）
+- 已登入帳號可**後綁定 LINE / Google**（token query param → httpOnly cookie 流程）
+- OAuth 帳號解除綁定
+- **修改密碼**（驗證舊密碼後 bcrypt 重新雜湊）
 
 ---
 
@@ -266,10 +269,10 @@ NotificationsListener
 
 | 路由 | 說明 |
 |------|------|
-| `/` | 平台首頁 |
+| `/` | 平台首頁（熱門商城 + 特色介紹） |
 | `/login` | 登入（LINE / Google OAuth + 帳密） |
 | `/register` | 註冊（角色選擇） |
-| `/shops` | 商城列表（分頁） |
+| `/shops` | 商城列表（分頁、即時搜尋） |
 | `/shops/:slug` | 商城詳情（商品列表、篩選） |
 | `/products/:id` | 商品詳情（規格選擇、相似商品推薦） |
 
@@ -277,33 +280,36 @@ NotificationsListener
 
 | 路由 | 說明 |
 |------|------|
-| `/retailer/home` | 首頁（AI 個人化推薦 + LLM 解釋） |
+| `/retailer/home` | 首頁（AI 個人化推薦 + LLM 解釋 + 最近瀏覽） |
 | `/retailer/search` | 搜尋（即時 FTS + AI 語意 + 以圖搜圖） |
 | `/retailer/cart` | 購物車（調整數量、刪除） |
-| `/retailer/checkout` | 結帳（多商城自動分單） |
+| `/retailer/checkout` | 結帳（多商城自動分單，自動帶入個人資料） |
 | `/retailer/orders` | 訂單列表（狀態篩選） |
-| `/retailer/orders/:id` | 訂單詳情（狀態時間軸） |
-| `/retailer/profile` | 個人資料編輯 |
-| `/retailer/onboarding` | 新用戶引導（補填店名、地址） |
+| `/retailer/orders/:id` | 訂單詳情（狀態時間軸、取消） |
+| `/retailer/orders/:id/success` | 下單成功頁（含付款指引） |
+| `/retailer/profile` | 個人資料 + OAuth 綁定 + 修改密碼 |
+| `/retailer/onboarding` | 新用戶引導（補填店名、電話、地址） |
 
 ### 批發商
 
 | 路由 | 說明 |
 |------|------|
 | `/wholesaler/dashboard` | 儀表板（今日訂單、月營收、商品數） |
-| `/wholesaler/products` | 商品管理列表（低庫存 badge） |
+| `/wholesaler/products` | 商品管理列表（狀態 / 分類篩選、低庫存 badge） |
 | `/wholesaler/products/new` | 新增商品（含 AI 標籤建議） |
-| `/wholesaler/products/:id/edit` | 編輯商品 |
-| `/wholesaler/orders` | 訂單管理（狀態篩選） |
-| `/wholesaler/orders/:id` | 訂單處理（更新狀態、備註） |
-| `/wholesaler/analytics` | 數據分析（營收趨勢、熱銷排行） |
-| `/wholesaler/shop` | 商城設定 |
-| `/wholesaler/tags` | 標籤管理 |
+| `/wholesaler/products/:id/edit` | 編輯商品（含 variant 庫存調整） |
+| `/wholesaler/orders` | 訂單管理（狀態篩選 + 關鍵字搜尋） |
+| `/wholesaler/orders/:id` | 訂單處理（更新狀態、物流單號、備註） |
+| `/wholesaler/analytics` | 數據分析（營收趨勢、熱銷排行、活躍零售商） |
+| `/wholesaler/shop` | 商城設定（Logo、Banner、最低訂金） |
+| `/wholesaler/tags` | 標籤管理 CRUD |
+| `/wholesaler/profile` | 帳號設定（修改密碼） |
 
 ### 管理員
 
 | 路由 | 說明 |
 |------|------|
+| `/admin/dashboard` | 系統總覽（使用者數、訂單數、營收、商城數） |
 | `/admin/users` | 使用者管理（角色篩選、啟用 / 停用） |
 | `/admin/shops` | 商城管理（啟用 / 停用） |
 
@@ -324,9 +330,14 @@ Base URL：`/api/v1`
 | GET | `/me` | 取得當前使用者 | JWT |
 | GET | `/line` | LINE OAuth 授權跳轉 | — |
 | GET | `/line/callback` | LINE OAuth 回呼 | — |
+| GET | `/line/bind` | LINE 帳號綁定起始 | — |
 | GET | `/google` | Google OAuth 授權跳轉 | — |
 | GET | `/google/callback` | Google OAuth 回呼 | — |
+| GET | `/google/bind` | Google 帳號綁定起始 | — |
+| GET | `/oauth-accounts` | 已綁定 OAuth 清單 | JWT |
+| DELETE | `/oauth-accounts/:provider` | 解除 OAuth 綁定 | JWT |
 | PUT | `/profile` | 更新零售商資料 | JWT |
+| PUT | `/password` | 修改密碼 | JWT |
 
 ### Products `/products`
 
@@ -385,6 +396,7 @@ Base URL：`/api/v1`
 
 | 方法 | 路由 | 說明 | 認證 |
 |------|------|------|------|
+| GET | `/stats` | 系統統計（用戶、訂單、商城、營收） | JWT + Admin |
 | GET | `/users` | 使用者列表（分頁、角色篩選） | JWT + Admin |
 | PATCH | `/users/:id/status` | 啟用 / 停用使用者 | JWT + Admin |
 | GET | `/shops` | 商城列表（分頁） | JWT + Admin |
@@ -534,22 +546,27 @@ pnpm test:e2e
 - LINE OAuth（Authorization Code Flow）
 - Google OAuth（Authorization Code Flow + id_token 解碼）
 - 新用戶 Onboarding 流程
+- 已登入後綁定 / 解除 OAuth 帳號
+- 修改密碼（驗證舊密碼 → bcrypt 重雜湊）
 
 **批發商**
 - 商品 CRUD（SKU 變體、標籤、圖片 URL）
-- 訂單管理（完整狀態機）
+- 商品篩選（狀態 / 分類篩選）
+- 訂單管理（完整狀態機 + 關鍵字搜尋）
 - 儀表板統計（今日訂單、月營收、商品數）
 - 數據分析（30 日趨勢、Top 5 商品 / 零售商、狀態分布）
 - 商城設定（Logo、Banner、最低訂金）
 - 標籤管理 CRUD
+- 帳號設定（修改密碼）
 
 **零售商**
-- AI 個人化推薦首頁（SVD + LLM 解釋）
+- AI 個人化推薦首頁（SVD + LLM 解釋 + 最近瀏覽）
 - 商品搜尋（即時 FTS + AI 語意 + 以圖搜圖）
 - 購物車（Redis Hash，跨裝置同步）
-- 多商城結帳下單
+- 多商城結帳（自動帶入個人資料、自動分單）
+- 下單成功頁（含付款指引）
 - 訂單列表 / 詳情 / 追蹤 / 取消
-- 個人資料編輯
+- 個人資料編輯（含電話、OAuth 綁定、修改密碼）
 
 **AI**
 - SVD 協同過濾（冷啟動自動降級）
@@ -580,6 +597,7 @@ pnpm test:e2e
 - 商品管理表格低庫存 badge
 
 **管理員後台**
+- 系統總覽儀表板（9 個 KPI 並行查詢）
 - 使用者管理（列表、啟用 / 停用）
 - 商城管理（列表、啟用 / 停用）
 - Role-based guard
