@@ -30,7 +30,7 @@ jobs:
 
       - name: Run unit tests
         working-directory: backend
-        run: pnpm test --no-coverage
+        run: pnpm test -- --no-coverage
 
       - name: Run E2E tests
         working-directory: backend
