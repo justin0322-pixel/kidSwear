@@ -189,11 +189,12 @@ describe('App E2E', () => {
     it('公開端點回傳 200 + 分頁結構', async () => {
       p.product.findMany.mockResolvedValue([
         {
-          id: BigInt(10), name: '小熊上衣', category: '上衣',
+          id: BigInt(10), name: '小熊上衣', category: '上衣', status: 'active',
           basePrice: { toString: () => '250' },
           images: [{ url: 'https://example.com/img.jpg' }],
-          productTags: [{ tag: { name: '嬰幼兒' } }],
+          productTags: [{ tag: { id: BigInt(1), name: '嬰幼兒', color: null } }],
           shop: { id: BigInt(1), name: '測試商城' },
+          variants: [{ stock: 10, reservedStock: 0, lowStockThreshold: 3 }],
         },
       ])
       p.product.count.mockResolvedValue(1)
