@@ -12,7 +12,8 @@ import { VariantEditor } from '@/components/wholesaler/VariantEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
+import { ImageUploader } from '@/components/wholesaler/ImageUploader'
 
 const schema = z.object({
   name: z.string().min(1, '請填寫商品名稱'),
@@ -52,9 +53,7 @@ export default function NewProductPage() {
   const { data: myShop } = useMyShop()
   const { mutate: createProduct, isPending, error } = useCreateProduct()
   const [selectedTags, setSelectedTags] = useState<number[]>([])
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageUrl, setImageUrl] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadedImageUrl, setUploadedImageUrl] = useState('')
   const { mutate: suggestTags, isPending: isSuggesting, data: suggestedTags } = useSuggestTags()
 
   const methods = useForm<FormValues>({
@@ -85,13 +84,6 @@ export default function NewProductPage() {
     )
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImagePreview(URL.createObjectURL(file))
-    suggestTags(file)
-  }
-
   const applyAllSuggested = () => {
     if (!suggestedTags || !tags) return
     const shopTagIds = new Set(tags.map((t) => String(t.id)))
@@ -111,7 +103,7 @@ export default function NewProductPage() {
           ...v,
           price: v.price || undefined,
         })),
-        imageUrls: imageUrl.trim() ? [imageUrl.trim()] : undefined,
+        imageUrls: uploadedImageUrl ? [uploadedImageUrl] : undefined,
       },
       {
         onSuccess: () => {
@@ -238,26 +230,10 @@ export default function NewProductPage() {
                 <span className="text-xs text-gray-400">上傳商品圖片，AI 自動推薦標籤</span>
               </div>
 
-              <div
-                className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {imagePreview ? (
-                  <img src={imagePreview} alt="預覽" className="mx-auto h-32 object-contain rounded" />
-                ) : (
-                  <div className="space-y-1 py-4">
-                    <p className="text-sm text-gray-500">點擊上傳商品圖片</p>
-                    <p className="text-xs text-gray-400">支援 JPG、PNG，最大 10MB</p>
-                  </div>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImageChange}
-                />
-              </div>
+              <ImageUploader
+                onUploaded={(url) => setUploadedImageUrl(url)}
+                onFileSelected={(file) => suggestTags(file)}
+              />
 
               {isSuggesting && (
                 <p className="text-xs text-gray-500 animate-pulse">AI 分析中，請稍候...</p>
@@ -305,17 +281,11 @@ export default function NewProductPage() {
                 </div>
               )}
 
-              {/* 商品圖片 URL */}
-              <div className="space-y-1 pt-1">
-                <Label htmlFor="imageUrl">商品主圖連結（URL）</Label>
-                <Input
-                  id="imageUrl"
-                  placeholder="https://cdn.example.com/product.jpg"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                />
-                <p className="text-xs text-gray-400">填入後系統將自動計算 AI 向量，讓此商品出現在搜尋結果中</p>
-              </div>
+              {uploadedImageUrl && (
+                <p className="text-xs text-gray-400 truncate">
+                  已上傳：{uploadedImageUrl}
+                </p>
+              )}
             </section>
 
             {/* 標籤 */}
