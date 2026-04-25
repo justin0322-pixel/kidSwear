@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useProduct, useUpdateProduct, useShopTags, useAddVariant, useUpdateVariant, useRemoveVariant, type ProductVariant } from '@/hooks/use-products'
 import { useMyShop } from '@/hooks/use-shop'
+import { useVipDiscounts, useSetVipDiscount, useRemoveVipDiscount, type VipDiscount } from '@/hooks/use-vip'
 import { ImageUploader } from '@/components/wholesaler/ImageUploader'
 import { Navbar } from '@/components/layout/Navbar'
 import { Button } from '@/components/ui/button'
@@ -38,16 +39,22 @@ const GENDERS = [
 
 // ─── Variant Manager ─────────────────────────────────────────────────────────
 
-type VariantRowProps = { variant: ProductVariant; productId: number }
+type VariantRowProps = { variant: ProductVariant; productId: number; vipDiscount?: VipDiscount }
 
-function VariantRow({ variant, productId }: VariantRowProps) {
+function VariantRow({ variant, productId, vipDiscount }: VariantRowProps) {
   const [stock, setStock] = useState(String(variant.stock))
   const [price, setPrice] = useState(variant.price)
   const [confirmDel, setConfirmDel] = useState(false)
   const [dirty, setDirty] = useState(false)
 
+  const [showVipForm, setShowVipForm] = useState(false)
+  const [vipType, setVipType] = useState<'percentage' | 'fixed'>(vipDiscount?.discountType ?? 'percentage')
+  const [vipValue, setVipValue] = useState(vipDiscount ? String(vipDiscount.discountValue) : '')
+
   const { mutate: updateVariant, isPending: saving } = useUpdateVariant(productId)
   const { mutate: removeVariant, isPending: deleting } = useRemoveVariant(productId)
+  const { mutate: setVipDiscount, isPending: settingVip } = useSetVipDiscount()
+  const { mutate: removeVipDiscount, isPending: removingVip } = useRemoveVipDiscount()
 
   const handleSave = () => {
     updateVariant(
@@ -56,54 +63,141 @@ function VariantRow({ variant, productId }: VariantRowProps) {
     )
   }
 
+  const handleSaveVip = () => {
+    const val = Number(vipValue)
+    if (!vipValue || isNaN(val) || val < 0) return
+    setVipDiscount(
+      { variantId: variant.id, discountType: vipType, discountValue: val },
+      { onSuccess: () => setShowVipForm(false) },
+    )
+  }
+
+  const vipLabel = vipDiscount
+    ? vipDiscount.discountType === 'percentage'
+      ? `${vipDiscount.discountValue}% 折`
+      : `NT$${Number(vipDiscount.discountValue).toLocaleString('zh-TW')}`
+    : null
+
   return (
-    <tr className="border-b last:border-0">
-      <td className="py-2.5 pr-3 text-sm text-gray-700">{variant.size}</td>
-      <td className="py-2.5 pr-3 text-sm text-gray-700">{variant.color}</td>
-      <td className="py-2.5 pr-3">
-        <input
-          type="number"
-          min={0}
-          value={stock}
-          onChange={(e) => { setStock(e.target.value); setDirty(true) }}
-          className="w-20 rounded border border-input px-2 py-1 text-sm text-center tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      </td>
-      <td className="py-2.5 pr-3">
-        <input
-          type="text"
-          placeholder="同批發價"
-          value={price}
-          onChange={(e) => { setPrice(e.target.value); setDirty(true) }}
-          className="w-24 rounded border border-input px-2 py-1 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      </td>
-      <td className="py-2.5">
-        <div className="flex items-center gap-2">
-          {dirty && (
-            <Button size="sm" disabled={saving} onClick={handleSave}>
-              {saving ? '…' : '儲存'}
-            </Button>
+    <>
+      <tr className="border-b">
+        <td className="py-2.5 pr-3 text-sm text-gray-700">{variant.size}</td>
+        <td className="py-2.5 pr-3 text-sm text-gray-700">{variant.color}</td>
+        <td className="py-2.5 pr-3">
+          <input
+            type="number"
+            min={0}
+            value={stock}
+            onChange={(e) => { setStock(e.target.value); setDirty(true) }}
+            className="w-20 rounded border border-input px-2 py-1 text-sm text-center tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </td>
+        <td className="py-2.5 pr-3">
+          <input
+            type="text"
+            placeholder="同批發價"
+            value={price}
+            onChange={(e) => { setPrice(e.target.value); setDirty(true) }}
+            className="w-24 rounded border border-input px-2 py-1 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </td>
+        <td className="py-2.5 pr-3">
+          {vipLabel ? (
+            <span className="inline-flex items-center gap-1.5 text-xs">
+              <span className="text-amber-600 font-medium">{vipLabel}</span>
+              <button type="button" onClick={() => { setShowVipForm((v) => !v); setVipType(vipDiscount!.discountType); setVipValue(String(vipDiscount!.discountValue)) }} className="text-gray-400 hover:text-gray-600">編輯</button>
+              <button type="button" disabled={removingVip} onClick={() => removeVipDiscount(variant.id)} className="text-red-400 hover:text-red-600 disabled:opacity-50">移除</button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowVipForm((v) => !v)}
+              className="text-xs text-amber-500 hover:text-amber-700"
+            >
+              {showVipForm ? '取消' : '+ 設定'}
+            </button>
           )}
-          {confirmDel ? (
-            <>
+        </td>
+        <td className="py-2.5">
+          <div className="flex items-center gap-2">
+            {dirty && (
+              <Button size="sm" disabled={saving} onClick={handleSave}>
+                {saving ? '…' : '儲存'}
+              </Button>
+            )}
+            {confirmDel ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={deleting}
+                  className="border-red-400 text-red-500 hover:bg-red-50"
+                  onClick={() => removeVariant(Number(variant.id))}
+                >
+                  確認刪除
+                </Button>
+                <button type="button" className="text-xs text-gray-400 hover:text-gray-600" onClick={() => setConfirmDel(false)}>取消</button>
+              </>
+            ) : (
+              <button type="button" className="text-xs text-gray-400 hover:text-red-400" onClick={() => setConfirmDel(true)}>刪除</button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {showVipForm && (
+        <tr className="border-b bg-amber-50/40">
+          <td colSpan={6} className="px-3 py-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <label className="text-xs text-gray-500">折扣類型</label>
+                <select
+                  value={vipType}
+                  onChange={(e) => setVipType(e.target.value as 'percentage' | 'fixed')}
+                  className="rounded border border-input bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="percentage">百分比折扣（%）</option>
+                  <option value="fixed">固定 VIP 價（NT$）</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-gray-500">
+                  {vipType === 'percentage' ? '折扣百分比（0–100）' : 'VIP 價格（NT$）'}
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={vipType === 'percentage' ? 100 : undefined}
+                  value={vipValue}
+                  onChange={(e) => setVipValue(e.target.value)}
+                  placeholder={vipType === 'percentage' ? 'e.g. 10 = 9折' : 'e.g. 199'}
+                  className="w-36 rounded border border-input px-2 py-1 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
               <Button
                 size="sm"
-                variant="outline"
-                disabled={deleting}
-                className="border-red-400 text-red-500 hover:bg-red-50"
-                onClick={() => removeVariant(Number(variant.id))}
+                disabled={settingVip || !vipValue}
+                onClick={handleSaveVip}
+                className="bg-amber-500 hover:bg-amber-600"
               >
-                確認刪除
+                {settingVip ? '儲存中...' : '儲存 VIP 折扣'}
               </Button>
-              <button type="button" className="text-xs text-gray-400 hover:text-gray-600" onClick={() => setConfirmDel(false)}>取消</button>
-            </>
-          ) : (
-            <button type="button" className="text-xs text-gray-400 hover:text-red-400" onClick={() => setConfirmDel(true)}>刪除</button>
-          )}
-        </div>
-      </td>
-    </tr>
+              <button
+                type="button"
+                onClick={() => setShowVipForm(false)}
+                className="text-xs text-gray-400 hover:text-gray-600 self-end pb-1"
+              >
+                取消
+              </button>
+            </div>
+            {vipType === 'percentage' && vipValue && (
+              <p className="text-xs text-amber-600 mt-1.5">
+                VIP 折扣 {vipValue}%，即打 {(100 - Number(vipValue)).toFixed(0)} 折
+              </p>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
@@ -167,6 +261,8 @@ export default function EditProductPage() {
   const { data: product, isLoading } = useProduct(productId)
   const { data: myShop } = useMyShop()
   const { data: tags } = useShopTags(myShop?.id)
+  const { data: allVipDiscounts = [] } = useVipDiscounts()
+  const vipDiscountMap = Object.fromEntries(allVipDiscounts.map((d) => [d.variantId, d]))
   const { mutate: updateProduct, isPending, error } = useUpdateProduct(productId)
 
   const [selectedTags, setSelectedTags] = useState<number[]>([])
@@ -379,12 +475,13 @@ export default function EditProductPage() {
                         <th className="pb-2 pr-3 font-medium">顏色</th>
                         <th className="pb-2 pr-3 font-medium">庫存</th>
                         <th className="pb-2 pr-3 font-medium">訂價（NT$）</th>
+                        <th className="pb-2 pr-3 font-medium text-amber-600">VIP 折扣</th>
                         <th className="pb-2 font-medium">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {product.variants.map((v) => (
-                        <VariantRow key={v.id} variant={v} productId={productId} />
+                        <VariantRow key={v.id} variant={v} productId={productId} vipDiscount={vipDiscountMap[v.id]} />
                       ))}
                     </tbody>
                   </table>
