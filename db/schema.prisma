@@ -81,6 +81,7 @@ model Retailer {
   orders          Order[]
   behaviors       UserBehavior[]
   recommendations Recommendation[]
+  vipMemberships  ShopVipMember[]
 
   @@map("retailers")
 }
@@ -127,18 +128,57 @@ model Shop {
   bannerUrl      String?   @map("banner_url")
   minOrderAmount Decimal   @default(0) @map("min_order_amount") @db.Decimal(10, 2)
   isActive       Boolean   @default(true) @map("is_active")
+  isVipOnly      Boolean   @default(false) @map("is_vip_only")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
-  wholesaler Wholesaler @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
-  products   Product[]
-  orders     Order[]
-  tags       Tag[]
+  wholesaler   Wholesaler           @relation(fields: [wholesalerId], references: [id], onDelete: Cascade)
+  products     Product[]
+  orders       Order[]
+  tags         Tag[]
+  vipMembers   ShopVipMember[]
+  vipDiscounts VariantVipDiscount[]
 
   @@index([slug])
   @@index([isActive])
   @@map("shops")
+}
+
+model ShopVipMember {
+  id         BigInt   @id @default(autoincrement())
+  shopId     BigInt   @map("shop_id")
+  retailerId BigInt   @map("retailer_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  shop     Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  retailer Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, retailerId])
+  @@index([retailerId])
+  @@map("shop_vip_members")
+}
+
+enum DiscountType {
+  percentage
+  fixed
+}
+
+model VariantVipDiscount {
+  id            BigInt       @id @default(autoincrement())
+  variantId     BigInt       @map("variant_id")
+  shopId        BigInt       @map("shop_id")
+  discountType  DiscountType @map("discount_type")
+  discountValue Decimal      @map("discount_value") @db.Decimal(10, 2)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  shop    Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, shopId])
+  @@index([shopId])
+  @@map("variant_vip_discounts")
 }
 
 // ============================================================
@@ -204,8 +244,9 @@ model ProductVariant {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
+  product      Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems   OrderItem[]
+  vipDiscounts VariantVipDiscount[]
 
   @@unique([productId, size, color])
   @@index([productId])

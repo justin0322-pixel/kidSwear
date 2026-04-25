@@ -104,13 +104,48 @@ export class ProductsService {
     }
   }
 
-  async findAll(query: QueryProductDto) {
+  async findAll(query: QueryProductDto, retailerUserId?: bigint) {
     const page = Math.max(1, parseInt(query.page ?? '1', 10))
     const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize ?? '20', 10)))
     const tagNames = query.tags
       ?.split(',')
       .map((t) => t.trim())
       .filter(Boolean)
+
+    // VIP 商城存取控制：只有在指定 shopId 時才需要檢查
+    let isVipMember = false
+    let vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>()
+
+    if (query.shopId) {
+      const shopId = BigInt(query.shopId)
+      const shop = await this.prisma.shop.findFirst({
+        where: { id: shopId, deletedAt: null },
+        select: { isVipOnly: true },
+      })
+
+      if (shop?.isVipOnly) {
+        // 需要確認零售商身份
+        if (retailerUserId) {
+          const retailer = await this.prisma.retailer.findUnique({ where: { userId: retailerUserId } })
+          if (retailer) {
+            const membership = await this.prisma.shopVipMember.findUnique({
+              where: { shopId_retailerId: { shopId, retailerId: retailer.id } },
+            })
+            isVipMember = !!membership
+          }
+        }
+        // 非 VIP 且是 VIP 商城 → 回傳空列表
+        if (!isVipMember) {
+          return { items: [], total: 0, page, pageSize, isVipOnly: true, isVipMember: false }
+        }
+      }
+
+      // VIP 成員：載入折扣設定
+      if (isVipMember) {
+        const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId } })
+        vipDiscountMap = new Map(discounts.map((d) => [d.variantId.toString(), { type: d.discountType, value: d.discountValue }]))
+      }
+    }
 
     const includeInactive = query.includeInactive === 'true'
     const where: Prisma.ProductWhereInput = {
@@ -142,7 +177,17 @@ export class ProductsService {
           images: { where: { isPrimary: true }, select: { url: true }, take: 1 },
           productTags: { select: { tag: { select: { id: true, name: true, color: true } } } },
           shop: { select: { id: true, name: true } },
-          variants: { select: { stock: true, reservedStock: true, lowStockThreshold: true } },
+          variants: {
+            select: {
+              id: true,
+              size: true,
+              color: true,
+              priceOverride: true,
+              stock: true,
+              reservedStock: true,
+              lowStockThreshold: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -150,26 +195,45 @@ export class ProductsService {
     ])
 
     return {
-      items: raw.map((p) => ({
-        id: p.id.toString(),
-        name: p.name,
-        status: p.status,
-        category: p.category,
-        basePrice: p.basePrice.toString(),
-        primaryImageUrl: p.images[0]?.url ?? null,
-        tags: p.productTags.map((pt) => ({
-          id: Number(pt.tag.id),
-          name: pt.tag.name,
-          color: pt.tag.color,
-        })),
-        shop: { id: p.shop.id.toString(), name: p.shop.name },
-        lowStockCount: p.variants.filter(
-          (v) => v.stock - v.reservedStock <= v.lowStockThreshold,
-        ).length,
-      })),
+      items: raw.map((p) => {
+        const basePrice = p.basePrice
+        // 若有 VIP 折扣，取最低 VIP 價作為展示基底價
+        let displayBasePrice = basePrice
+        if (vipDiscountMap.size > 0) {
+          for (const v of p.variants) {
+            const disc = vipDiscountMap.get(v.id.toString())
+            if (disc) {
+              const vipPrice = disc.type === 'percentage'
+                ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100)))
+                : disc.value
+              if (vipPrice.lessThan(displayBasePrice)) displayBasePrice = vipPrice
+            }
+          }
+        }
+        return {
+          id: p.id.toString(),
+          name: p.name,
+          status: p.status,
+          category: p.category,
+          basePrice: basePrice.toString(),
+          vipPrice: vipDiscountMap.size > 0 ? displayBasePrice.toDecimalPlaces(2).toString() : undefined,
+          primaryImageUrl: p.images[0]?.url ?? null,
+          tags: p.productTags.map((pt) => ({
+            id: Number(pt.tag.id),
+            name: pt.tag.name,
+            color: pt.tag.color,
+          })),
+          shop: { id: p.shop.id.toString(), name: p.shop.name },
+          lowStockCount: p.variants.filter(
+            (v) => v.stock - v.reservedStock <= v.lowStockThreshold,
+          ).length,
+        }
+      }),
       total,
       page,
       pageSize,
+      isVipOnly: false,
+      isVipMember,
     }
   }
 

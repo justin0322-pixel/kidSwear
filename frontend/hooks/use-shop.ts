@@ -11,6 +11,7 @@ export type Shop = {
   logoUrl: string | null
   bannerUrl: string | null
   minOrderAmount: string
+  isVipOnly: boolean
 }
 
 type UpdateShopPayload = {

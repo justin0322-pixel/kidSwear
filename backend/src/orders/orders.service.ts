@@ -71,6 +71,16 @@ export class OrdersService {
     })
     if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
 
+    // VIP 商城：非 VIP 成員不可下單
+    if (shop.isVipOnly) {
+      const membership = await this.prisma.shopVipMember.findUnique({
+        where: { shopId_retailerId: { shopId: shop.id, retailerId: retailer.id } },
+      })
+      if (!membership) {
+        throw new ForbiddenException({ code: 'FORBIDDEN', message: '此為 VIP 專屬商城，您尚未取得 VIP 資格' })
+      }
+    }
+
     const variantIds = dto.items.map((i) => BigInt(i.variantId))
     const variants = await this.prisma.productVariant.findMany({
       where: { id: { in: variantIds } },
@@ -82,6 +92,20 @@ export class OrdersService {
     }
 
     const variantMap = new Map(variants.map((v) => [v.id.toString(), v]))
+
+    // 載入 VIP 折扣設定（若零售商有 VIP 資格）
+    const vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>()
+    const vipMembership = await this.prisma.shopVipMember.findUnique({
+      where: { shopId_retailerId: { shopId: shop.id, retailerId: retailer.id } },
+    })
+    if (vipMembership) {
+      const discounts = await this.prisma.variantVipDiscount.findMany({
+        where: { shopId: shop.id, variantId: { in: variantIds } },
+      })
+      for (const d of discounts) {
+        vipDiscountMap.set(d.variantId.toString(), { type: d.discountType, value: d.discountValue })
+      }
+    }
 
     for (const item of dto.items) {
       const v = variantMap.get(item.variantId.toString())!
@@ -100,7 +124,16 @@ export class OrdersService {
     let subtotal = new Prisma.Decimal(0)
     const itemsData = dto.items.map((item) => {
       const v = variantMap.get(item.variantId.toString())!
-      const unitPrice = v.priceOverride ?? v.product.basePrice
+      const basePrice = v.priceOverride ?? v.product.basePrice
+      const disc = vipDiscountMap.get(v.id.toString())
+      let unitPrice: Prisma.Decimal
+      if (disc) {
+        unitPrice = disc.type === 'percentage'
+          ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100))).toDecimalPlaces(2)
+          : disc.value
+      } else {
+        unitPrice = basePrice
+      }
       const itemSubtotal = unitPrice.mul(item.quantity)
       subtotal = subtotal.add(itemSubtotal)
       return {

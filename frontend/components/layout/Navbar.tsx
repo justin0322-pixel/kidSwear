@@ -168,6 +168,9 @@ export function Navbar() {
               <Link href="/wholesaler/analytics" className="hover:text-gray-900 transition-colors">
                 數據分析
               </Link>
+              <Link href="/wholesaler/vip" className="hover:text-gray-900 transition-colors">
+                VIP 管理
+              </Link>
             </>
           )}
         </nav>
@@ -308,6 +311,13 @@ export function Navbar() {
                           className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50"
                         >
                           數據分析
+                        </Link>
+                        <Link
+                          href="/wholesaler/vip"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-50"
+                        >
+                          VIP 管理
                         </Link>
                         <Link
                           href="/wholesaler/profile"

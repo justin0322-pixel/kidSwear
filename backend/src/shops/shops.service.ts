@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { DiscountType, Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { UpdateShopDto } from './dto/update-shop.dto'
+import { AddVipMemberDto, SetVipDiscountDto } from './dto/vip.dto'
 
 const SHOP_SELECT = {
   id: true,
@@ -12,6 +13,7 @@ const SHOP_SELECT = {
   bannerUrl: true,
   minOrderAmount: true,
   isActive: true,
+  isVipOnly: true,
   _count: { select: { products: true } },
 } satisfies Prisma.ShopSelect
 
@@ -65,6 +67,144 @@ export class ShopsService {
     if (!wholesaler) throw new ForbiddenException()
     if (!wholesaler.shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城尚未建立' })
     return this.format(wholesaler.shop)
+  }
+
+  // ── VIP helpers ──────────────────────────────────────────────────────────
+
+  private async getMyShopId(userId: bigint): Promise<bigint> {
+    const wholesaler = await this.prisma.wholesaler.findUnique({
+      where: { userId },
+      include: { shop: { select: { id: true } } },
+    })
+    if (!wholesaler?.shop) throw new ForbiddenException()
+    return wholesaler.shop.id
+  }
+
+  async isVipMember(shopId: bigint, retailerId: bigint): Promise<boolean> {
+    const record = await this.prisma.shopVipMember.findUnique({
+      where: { shopId_retailerId: { shopId, retailerId } },
+    })
+    return !!record
+  }
+
+  async getVipDiscountsForRetailer(shopId: bigint): Promise<Map<string, { type: DiscountType; value: Prisma.Decimal }>> {
+    const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId } })
+    return new Map(discounts.map((d) => [d.variantId.toString(), { type: d.discountType, value: d.discountValue }]))
+  }
+
+  async setVipMode(userId: bigint, isVipOnly: boolean): Promise<ReturnType<ShopsService['format']>> {
+    const shopId = await this.getMyShopId(userId)
+    const updated = await this.prisma.shop.update({
+      where: { id: shopId },
+      data: { isVipOnly },
+      select: SHOP_SELECT,
+    })
+    return this.format(updated)
+  }
+
+  async listVipMembers(userId: bigint) {
+    const shopId = await this.getMyShopId(userId)
+    const members = await this.prisma.shopVipMember.findMany({
+      where: { shopId },
+      include: {
+        retailer: {
+          include: { user: { select: { email: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    return members.map((m) => ({
+      id: m.id.toString(),
+      retailerId: m.retailer.id.toString(),
+      shopName: m.retailer.shopName,
+      email: m.retailer.user.email ?? '',
+      createdAt: m.createdAt,
+    }))
+  }
+
+  async addVipMember(userId: bigint, dto: AddVipMemberDto) {
+    const shopId = await this.getMyShopId(userId)
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      include: { retailer: true },
+    })
+    if (!user?.retailer) {
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '找不到此 Email 的零售商帳號' })
+    }
+    const existing = await this.prisma.shopVipMember.findUnique({
+      where: { shopId_retailerId: { shopId, retailerId: user.retailer.id } },
+    })
+    if (existing) {
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '此零售商已是 VIP 成員' })
+    }
+    await this.prisma.shopVipMember.create({ data: { shopId, retailerId: user.retailer.id } })
+    return { retailerId: user.retailer.id.toString(), shopName: user.retailer.shopName, email: user.email }
+  }
+
+  async removeVipMember(userId: bigint, retailerId: bigint) {
+    const shopId = await this.getMyShopId(userId)
+    const record = await this.prisma.shopVipMember.findUnique({
+      where: { shopId_retailerId: { shopId, retailerId } },
+    })
+    if (!record) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'VIP 成員不存在' })
+    await this.prisma.shopVipMember.delete({ where: { id: record.id } })
+  }
+
+  async listVipDiscounts(userId: bigint) {
+    const shopId = await this.getMyShopId(userId)
+    const discounts = await this.prisma.variantVipDiscount.findMany({
+      where: { shopId },
+      include: {
+        variant: {
+          include: { product: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    return discounts.map((d) => ({
+      id: d.id.toString(),
+      variantId: d.variantId.toString(),
+      productId: d.variant.product.id.toString(),
+      productName: d.variant.product.name,
+      size: d.variant.size,
+      color: d.variant.color,
+      discountType: d.discountType,
+      discountValue: d.discountValue.toString(),
+    }))
+  }
+
+  async setVipDiscount(userId: bigint, variantId: bigint, dto: SetVipDiscountDto) {
+    const shopId = await this.getMyShopId(userId)
+    const variant = await this.prisma.productVariant.findFirst({
+      where: { id: variantId },
+      include: { product: { select: { shopId: true, name: true } } },
+    })
+    if (!variant || variant.product.shopId !== shopId) {
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品規格不存在或不屬於此商城' })
+    }
+    if (dto.discountType === DiscountType.percentage && (dto.discountValue < 0 || dto.discountValue > 100)) {
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '百分比折扣須介於 0-100' })
+    }
+    const discount = await this.prisma.variantVipDiscount.upsert({
+      where: { variantId_shopId: { variantId, shopId } },
+      create: { variantId, shopId, discountType: dto.discountType, discountValue: new Prisma.Decimal(dto.discountValue) },
+      update: { discountType: dto.discountType, discountValue: new Prisma.Decimal(dto.discountValue) },
+    })
+    return {
+      id: discount.id.toString(),
+      variantId: discount.variantId.toString(),
+      discountType: discount.discountType,
+      discountValue: discount.discountValue.toString(),
+    }
+  }
+
+  async removeVipDiscount(userId: bigint, variantId: bigint) {
+    const shopId = await this.getMyShopId(userId)
+    const record = await this.prisma.variantVipDiscount.findUnique({
+      where: { variantId_shopId: { variantId, shopId } },
+    })
+    if (!record) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'VIP 折扣設定不存在' })
+    await this.prisma.variantVipDiscount.delete({ where: { id: record.id } })
   }
 
   async updateMyShop(userId: bigint, dto: UpdateShopDto): Promise<ReturnType<ShopsService['format']>> {

@@ -16,7 +16,8 @@ import { Input } from '@/components/ui/input'
 const CATEGORIES = ['全部', '上衣', '褲子', '裙子', '連身衣', '外套', '配件', '鞋子', '其他']
 
 type ProductsResponse = {
-  data: Product[]
+  data: (Product & { vipPrice?: string })[]
+  meta: { isVipOnly: boolean; isVipMember: boolean }
   pagination: { page: number; pageSize: number; total: number; totalPages: number }
 }
 
@@ -344,7 +345,14 @@ export default function ShopPage() {
                 <img src={shop.logoUrl} alt={shop.name} className="w-10 h-10 rounded-full object-cover border" />
               )}
               <div>
-                <h1 className="text-xl font-bold text-gray-900">{shop?.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold text-gray-900">{shop?.name}</h1>
+                  {shop?.isVipOnly && (
+                    <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">
+                      VIP 商城
+                    </span>
+                  )}
+                </div>
                 {shop?.description && (
                   <p className="text-sm text-gray-500">{shop.description}</p>
                 )}
@@ -398,11 +406,26 @@ export default function ShopPage() {
           </div>
         )}
 
-        {products && products.data.length === 0 && (
+        {/* VIP 商城門禁 */}
+        {products?.meta?.isVipOnly && !products.meta.isVipMember && (
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-3xl">
+              🔒
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900 text-lg">此為 VIP 專屬商城</p>
+              <p className="text-sm text-gray-500 mt-1">
+                您尚未取得此商城的 VIP 資格，無法瀏覽商品
+              </p>
+            </div>
+          </div>
+        )}
+
+        {products && !products.meta?.isVipOnly && products.data.length === 0 && (
           <p className="text-center text-gray-400 py-16">這個分類目前沒有商品</p>
         )}
 
-        {products && products.data.length > 0 && (
+        {products && products.data.length > 0 && !products.meta?.isVipOnly && (
           <>
             <p className="text-sm text-gray-500">共 {products.pagination.total} 件商品</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -428,9 +451,20 @@ export default function ShopPage() {
                     </div>
                     <div className="p-3 pb-4">
                       <p className="text-sm font-medium text-gray-900 line-clamp-2">{product.name}</p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        NT${Number(product.basePrice).toLocaleString('zh-TW')}
-                      </p>
+                      {product.vipPrice ? (
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-sm font-semibold text-amber-600">
+                            VIP NT${Number(product.vipPrice).toLocaleString('zh-TW')} 起
+                          </p>
+                          <p className="text-xs text-gray-400 line-through">
+                            NT${Number(product.basePrice).toLocaleString('zh-TW')}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-600 mt-1">
+                          NT${Number(product.basePrice).toLocaleString('zh-TW')}
+                        </p>
+                      )}
                       {product.tags.length > 0 && (
                         <div className="flex gap-1 mt-2 flex-wrap">
                           {product.tags.slice(0, 2).map((tag) => (

@@ -12,6 +12,7 @@ export type ShopSummary = {
   bannerUrl: string | null
   minOrderAmount: string
   isActive: boolean
+  isVipOnly: boolean
   _count: { products: number }
 }
 

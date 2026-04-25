@@ -42,6 +42,7 @@ class ToggleStatusDto {
 }
 import type { Request } from 'express'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard'
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
 import { CreateProductDto } from './dto/create-product.dto'
 import { QueryProductDto } from './dto/query-product.dto'
@@ -82,12 +83,19 @@ export class ProductsController {
   }
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: '列出商品' })
-  async findAll(@Query() query: QueryProductDto): Promise<object> {
-    const { items, total, page, pageSize } = await this.productsService.findAll(query)
+  async findAll(
+    @Query() query: QueryProductDto,
+    @Req() req: Request & { user?: JwtPayload },
+  ): Promise<object> {
+    const retailerUserId = req.user?.role === 'retailer' ? BigInt(req.user.sub) : undefined
+    const result = await this.productsService.findAll(query, retailerUserId)
+    const { items, total, page, pageSize, isVipOnly, isVipMember } = result
     return {
       success: true,
       data: items,
+      meta: { isVipOnly, isVipMember },
       pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
     }
   }
