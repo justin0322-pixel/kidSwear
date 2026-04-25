@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common'
-import { OnEvent } from '@nestjs/event-emitter'
+import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import {
   ORDER_CREATED,
   ORDER_STATUS_CHANGED,
@@ -7,10 +7,10 @@ import {
   OrderCreatedEvent,
   OrderStatusChangedEvent,
   StockLowEvent,
-} from '../orders/events/order.events'
-import { NotificationsService } from './notifications.service'
-import { EmailService } from './email.service'
-import { LineNotifyService } from './line-notify.service'
+} from '../orders/events/order.events';
+import { NotificationsService } from './notifications.service';
+import { EmailService } from './email.service';
+import { LineNotifyService } from './line-notify.service';
 
 @Injectable()
 export class NotificationsListener {
@@ -28,7 +28,7 @@ export class NotificationsListener {
       event.orderId,
       event.orderNumber,
       event.retailerShopName,
-    )
+    );
 
     // 2. Email to wholesaler
     if (event.wholesalerEmail) {
@@ -36,22 +36,22 @@ export class NotificationsListener {
         event.wholesalerEmail,
         event.orderNumber,
         event.retailerShopName,
-      )
+      );
     }
 
     // 3. LINE Notify to wholesaler (if token exists)
-    const lineToken = await this.lineNotify.getTokenByUserId(BigInt(event.wholesalerUserId))
+    const lineToken = await this.lineNotify.getTokenByUserId(BigInt(event.wholesalerUserId));
     if (lineToken) {
       await this.lineNotify.push(
         lineToken,
         `\n新訂單 ${event.orderNumber}\n來自：${event.retailerShopName}`,
-      )
+      );
     }
   }
 
   @OnEvent(STOCK_LOW)
   async handleStockLow(event: StockLowEvent): Promise<void> {
-    const message = `庫存預警：${event.productName}（${event.sku}）剩餘 ${event.availableStock} 件，低於閾值 ${event.threshold}`
+    const message = `庫存預警：${event.productName}（${event.sku}）剩餘 ${event.availableStock} 件，低於閾值 ${event.threshold}`;
 
     // WebSocket push to wholesaler
     if (event.wholesalerUserId) {
@@ -65,7 +65,7 @@ export class NotificationsListener {
           availableStock: event.availableStock,
           threshold: event.threshold,
         },
-      })
+      });
     }
 
     // Email to wholesaler
@@ -81,7 +81,7 @@ export class NotificationsListener {
           <p><strong>預警閾值：</strong>${event.threshold} 件</p>
           <p>請盡快補充庫存，避免影響訂單處理。</p>
         `,
-      })
+      });
     }
   }
 
@@ -93,7 +93,7 @@ export class NotificationsListener {
       event.orderId,
       event.orderNumber,
       event.newStatus,
-    )
+    );
 
     // 2. Email to retailer
     if (event.retailerEmail) {
@@ -101,7 +101,7 @@ export class NotificationsListener {
         event.retailerEmail,
         event.orderNumber,
         event.newStatus,
-      )
+      );
     }
   }
 }

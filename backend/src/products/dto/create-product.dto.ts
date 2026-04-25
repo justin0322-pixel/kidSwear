@@ -1,6 +1,6 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { ProductGender } from '@prisma/client'
-import { Type } from 'class-transformer'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ProductGender } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -16,28 +16,28 @@ import {
   MaxLength,
   Min,
   ValidateNested,
-} from 'class-validator'
+} from 'class-validator';
 
 export class CreateVariantDto {
   @ApiProperty({ example: '80cm' })
   @IsString()
   @MaxLength(20)
-  size!: string
+  size!: string;
 
   @ApiProperty({ example: '粉紅' })
   @IsString()
   @MaxLength(30)
-  color!: string
+  color!: string;
 
   @ApiProperty({ example: 50 })
   @IsInt()
   @Min(0)
-  stock!: number
+  stock!: number;
 
   @ApiPropertyOptional({ example: '299.00' })
   @IsOptional()
   @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
-  priceOverride?: string
+  priceOverride?: string;
 }
 
 export class CreateProductDto {
@@ -45,66 +45,66 @@ export class CreateProductDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)
-  name!: string
+  name!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  description?: string
+  description?: string;
 
   @ApiPropertyOptional({ example: 'BEAR' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  skuPrefix?: string
+  skuPrefix?: string;
 
   @ApiProperty({ example: '上衣' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  category!: string
+  category!: string;
 
   @ApiPropertyOptional({ example: '3-6M' })
   @IsOptional()
   @IsString()
   @MaxLength(20)
-  ageRange?: string
+  ageRange?: string;
 
   @ApiPropertyOptional({ enum: ProductGender })
   @IsOptional()
   @IsEnum(ProductGender)
-  gender?: ProductGender
+  gender?: ProductGender;
 
   @ApiProperty({ example: '250.00' })
   @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
-  basePrice!: string
+  basePrice!: string;
 
   @ApiPropertyOptional({ example: '499.00' })
   @IsOptional()
   @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
-  suggestedRetailPrice?: string
+  suggestedRetailPrice?: string;
 
   @ApiPropertyOptional({ example: { material: '100% 純棉' } })
   @IsOptional()
   @IsObject()
-  attributes?: Record<string, unknown>
+  attributes?: Record<string, unknown>;
 
   @ApiPropertyOptional({ example: [1, 2] })
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })
-  tags?: number[]
+  tags?: number[];
 
   @ApiPropertyOptional({ example: ['https://cdn.example.com/img.jpg'] })
   @IsOptional()
   @IsArray()
   @IsUrl({}, { each: true })
-  imageUrls?: string[]
+  imageUrls?: string[];
 
   @ApiProperty({ type: [CreateVariantDto] })
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateVariantDto)
-  variants!: CreateVariantDto[]
+  variants!: CreateVariantDto[];
 }

@@ -1,12 +1,12 @@
-import { Module } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
-import { ConfigService } from '@nestjs/config'
-import { PrismaModule } from '../prisma/prisma.module'
-import { NotificationsGateway } from './notifications.gateway'
-import { NotificationsService } from './notifications.service'
-import { NotificationsListener } from './notifications.listener'
-import { EmailService } from './email.service'
-import { LineNotifyService } from './line-notify.service'
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { PrismaModule } from '../prisma/prisma.module';
+import { NotificationsGateway } from './notifications.gateway';
+import { NotificationsService } from './notifications.service';
+import { NotificationsListener } from './notifications.listener';
+import { EmailService } from './email.service';
+import { LineNotifyService } from './line-notify.service';
 
 @Module({
   imports: [

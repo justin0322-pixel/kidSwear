@@ -3,29 +3,29 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common'
-import { OrderStatus, Prisma, UserRole } from '@prisma/client'
-import { EventEmitter2 } from '@nestjs/event-emitter'
-import { PrismaService } from '../prisma/prisma.service'
-import { CreateOrderDto } from './dto/create-order.dto'
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
+} from '@nestjs/common';
+import { OrderStatus, Prisma, UserRole } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import {
   ORDER_CREATED,
   ORDER_STATUS_CHANGED,
   OrderCreatedEvent,
   OrderStatusChangedEvent,
-} from './events/order.events'
-import { InventoryService } from '../inventory/inventory.service'
+} from './events/order.events';
+import { InventoryService } from '../inventory/inventory.service';
 
 const VALID_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
   [OrderStatus.pending]: [OrderStatus.paid, OrderStatus.cancelled],
   [OrderStatus.paid]: [OrderStatus.processing, OrderStatus.refunded],
   [OrderStatus.processing]: [OrderStatus.shipped],
   [OrderStatus.shipped]: [OrderStatus.completed],
-}
+};
 
 function orderDatePrefix(): string {
-  return new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  return new Date().toISOString().slice(0, 10).replace(/-/g, '');
 }
 
 const ORDER_LIST_SELECT = {
@@ -46,9 +46,9 @@ const ORDER_LIST_SELECT = {
   shop: { select: { id: true, name: true } },
   retailer: { select: { id: true, shopName: true } },
   _count: { select: { items: true } },
-} satisfies Prisma.OrderSelect
+} satisfies Prisma.OrderSelect;
 
-type OrderRow = Prisma.OrderGetPayload<{ select: typeof ORDER_LIST_SELECT }>
+type OrderRow = Prisma.OrderGetPayload<{ select: typeof ORDER_LIST_SELECT }>;
 
 @Injectable()
 export class OrdersService {
@@ -62,80 +62,87 @@ export class OrdersService {
     const retailer = await this.prisma.retailer.findUnique({
       where: { userId },
       include: { user: { select: { email: true } } },
-    })
-    if (!retailer) throw new ForbiddenException()
+    });
+    if (!retailer) throw new ForbiddenException();
 
     const shop = await this.prisma.shop.findFirst({
       where: { id: BigInt(dto.shopId), isActive: true, deletedAt: null },
       include: { wholesaler: { include: { user: { select: { id: true, email: true } } } } },
-    })
-    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
+    });
+    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' });
 
     // VIP 商城：非 VIP 成員不可下單
     if (shop.isVipOnly) {
       const membership = await this.prisma.shopVipMember.findUnique({
         where: { shopId_retailerId: { shopId: shop.id, retailerId: retailer.id } },
-      })
+      });
       if (!membership) {
-        throw new ForbiddenException({ code: 'FORBIDDEN', message: '此為 VIP 專屬商城，您尚未取得 VIP 資格' })
+        throw new ForbiddenException({
+          code: 'FORBIDDEN',
+          message: '此為 VIP 專屬商城，您尚未取得 VIP 資格',
+        });
       }
     }
 
-    const variantIds = dto.items.map((i) => BigInt(i.variantId))
+    const variantIds = dto.items.map((i) => BigInt(i.variantId));
     const variants = await this.prisma.productVariant.findMany({
       where: { id: { in: variantIds } },
       include: { product: { select: { name: true, basePrice: true, shopId: true } } },
-    })
+    });
 
     if (variants.length !== dto.items.length) {
-      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '部分商品規格不存在' })
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '部分商品規格不存在' });
     }
 
-    const variantMap = new Map(variants.map((v) => [v.id.toString(), v]))
+    const variantMap = new Map(variants.map((v) => [v.id.toString(), v]));
 
     // 載入 VIP 折扣設定（若零售商有 VIP 資格）
-    const vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>()
+    const vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>();
     const vipMembership = await this.prisma.shopVipMember.findUnique({
       where: { shopId_retailerId: { shopId: shop.id, retailerId: retailer.id } },
-    })
+    });
     if (vipMembership) {
       const discounts = await this.prisma.variantVipDiscount.findMany({
         where: { shopId: shop.id, variantId: { in: variantIds } },
-      })
+      });
       for (const d of discounts) {
-        vipDiscountMap.set(d.variantId.toString(), { type: d.discountType, value: d.discountValue })
+        vipDiscountMap.set(d.variantId.toString(), {
+          type: d.discountType,
+          value: d.discountValue,
+        });
       }
     }
 
     for (const item of dto.items) {
-      const v = variantMap.get(item.variantId.toString())!
+      const v = variantMap.get(item.variantId.toString())!;
       if (v.product.shopId !== shop.id) {
-        throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '商品不屬於此商城' })
+        throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '商品不屬於此商城' });
       }
-      const available = v.stock - v.reservedStock
+      const available = v.stock - v.reservedStock;
       if (available < item.quantity) {
         throw new BadRequestException({
           code: 'INSUFFICIENT_STOCK',
           message: `${v.product.name} (${v.size}/${v.color}) 庫存不足，可用：${available}`,
-        })
+        });
       }
     }
 
-    let subtotal = new Prisma.Decimal(0)
+    let subtotal = new Prisma.Decimal(0);
     const itemsData = dto.items.map((item) => {
-      const v = variantMap.get(item.variantId.toString())!
-      const basePrice = v.priceOverride ?? v.product.basePrice
-      const disc = vipDiscountMap.get(v.id.toString())
-      let unitPrice: Prisma.Decimal
+      const v = variantMap.get(item.variantId.toString())!;
+      const basePrice = v.priceOverride ?? v.product.basePrice;
+      const disc = vipDiscountMap.get(v.id.toString());
+      let unitPrice: Prisma.Decimal;
       if (disc) {
-        unitPrice = disc.type === 'percentage'
-          ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100))).toDecimalPlaces(2)
-          : disc.value
+        unitPrice =
+          disc.type === 'percentage'
+            ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100))).toDecimalPlaces(2)
+            : disc.value;
       } else {
-        unitPrice = basePrice
+        unitPrice = basePrice;
       }
-      const itemSubtotal = unitPrice.mul(item.quantity)
-      subtotal = subtotal.add(itemSubtotal)
+      const itemSubtotal = unitPrice.mul(item.quantity);
+      subtotal = subtotal.add(itemSubtotal);
       return {
         variantId: v.id,
         productName: v.product.name,
@@ -145,14 +152,14 @@ export class OrdersService {
         unitPrice,
         quantity: item.quantity,
         subtotal: itemSubtotal,
-      }
-    })
+      };
+    });
 
     if (subtotal.lessThan(shop.minOrderAmount)) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: `訂單金額未達最低門檻 ${shop.minOrderAmount.toString()} 元`,
-      })
+      });
     }
 
     const orderId = await this.prisma.$transaction(async (tx) => {
@@ -169,10 +176,10 @@ export class OrdersService {
           retailerNote: dto.retailerNote,
           items: { createMany: { data: itemsData } },
         },
-      })
+      });
 
-      const orderNumber = `ORD-${orderDatePrefix()}-${order.id.toString().padStart(4, '0')}`
-      await tx.order.update({ where: { id: order.id }, data: { orderNumber } })
+      const orderNumber = `ORD-${orderDatePrefix()}-${order.id.toString().padStart(4, '0')}`;
+      await tx.order.update({ where: { id: order.id }, data: { orderNumber } });
 
       await tx.orderStatusHistory.create({
         data: {
@@ -181,7 +188,7 @@ export class OrdersService {
           toStatus: OrderStatus.pending,
           changedBy: userId,
         },
-      })
+      });
 
       await Promise.all(
         dto.items.map((item) =>
@@ -190,12 +197,12 @@ export class OrdersService {
             data: { reservedStock: { increment: item.quantity } },
           }),
         ),
-      )
+      );
 
-      return order.id
-    })
+      return order.id;
+    });
 
-    const result = await this.findById(userId, UserRole.retailer, orderId)
+    const result = await this.findById(userId, UserRole.retailer, orderId);
 
     if (shop.wholesaler) {
       this.eventEmitter.emit(
@@ -207,13 +214,13 @@ export class OrdersService {
           retailer.shopName,
           shop.wholesaler.user.email ?? '',
         ),
-      )
+      );
     }
 
     // Check stock after reservedStock incremented
-    void this.inventory.checkVariants(dto.items.map((i) => BigInt(i.variantId)))
+    void this.inventory.checkVariants(dto.items.map((i) => BigInt(i.variantId)));
 
-    return result
+    return result;
   }
 
   async findAll(
@@ -224,21 +231,23 @@ export class OrdersService {
     pageSize = 20,
     search?: string,
   ) {
-    const skip = (page - 1) * pageSize
-    const statusFilter = status ? ({ status: status as OrderStatus } as Prisma.OrderWhereInput) : {}
+    const skip = (page - 1) * pageSize;
+    const statusFilter = status
+      ? ({ status: status as OrderStatus } as Prisma.OrderWhereInput)
+      : {};
 
-    let roleFilter: Prisma.OrderWhereInput = {}
+    let roleFilter: Prisma.OrderWhereInput = {};
     if (role === UserRole.retailer) {
-      const retailer = await this.prisma.retailer.findUnique({ where: { userId } })
-      if (!retailer) throw new ForbiddenException()
-      roleFilter = { retailerId: retailer.id }
+      const retailer = await this.prisma.retailer.findUnique({ where: { userId } });
+      if (!retailer) throw new ForbiddenException();
+      roleFilter = { retailerId: retailer.id };
     } else if (role === UserRole.wholesaler) {
       const wholesaler = await this.prisma.wholesaler.findUnique({
         where: { userId },
         include: { shop: true },
-      })
-      if (!wholesaler?.shop) throw new ForbiddenException()
-      roleFilter = { shopId: wholesaler.shop.id }
+      });
+      if (!wholesaler?.shop) throw new ForbiddenException();
+      roleFilter = { shopId: wholesaler.shop.id };
     }
 
     const searchFilter: Prisma.OrderWhereInput = search
@@ -248,9 +257,9 @@ export class OrdersService {
             { retailer: { shopName: { contains: search, mode: 'insensitive' } } },
           ],
         }
-      : {}
+      : {};
 
-    const where: Prisma.OrderWhereInput = { ...roleFilter, ...statusFilter, ...searchFilter }
+    const where: Prisma.OrderWhereInput = { ...roleFilter, ...statusFilter, ...searchFilter };
     const [raw, total] = await Promise.all([
       this.prisma.order.findMany({
         where,
@@ -260,9 +269,9 @@ export class OrdersService {
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.order.count({ where }),
-    ])
+    ]);
 
-    return { items: raw.map((o) => this.formatList(o)), total, page, pageSize }
+    return { items: raw.map((o) => this.formatList(o)), total, page, pageSize };
   }
 
   async findById(userId: bigint, role: UserRole, orderId: bigint) {
@@ -277,10 +286,10 @@ export class OrdersService {
         shop: { select: { id: true, name: true } },
         retailer: { select: { id: true, shopName: true, userId: true } },
       },
-    })
-    if (!order) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' })
+    });
+    if (!order) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' });
 
-    await this.verifyAccess(userId, role, order)
+    await this.verifyAccess(userId, role, order);
 
     return {
       id: order.id.toString(),
@@ -323,15 +332,15 @@ export class OrdersService {
         changedByRole: h.changedByUser?.role ?? null,
       })),
       itemCount: order.items.reduce((sum, i) => sum + i.quantity, 0),
-    }
+    };
   }
 
   async updateStatus(userId: bigint, orderId: bigint, dto: UpdateOrderStatusDto) {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
       include: { shop: true },
-    })
-    if (!wholesaler?.shop) throw new ForbiddenException()
+    });
+    if (!wholesaler?.shop) throw new ForbiddenException();
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -339,23 +348,23 @@ export class OrdersService {
         items: true,
         retailer: { include: { user: { select: { id: true, email: true } } } },
       },
-    })
+    });
     if (!order || order.shopId !== wholesaler.shop.id) {
-      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' })
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' });
     }
 
-    const allowed = VALID_TRANSITIONS[order.status] ?? []
+    const allowed = VALID_TRANSITIONS[order.status] ?? [];
     if (!allowed.includes(dto.status)) {
       throw new BadRequestException({
         code: 'INVALID_STATE_TRANSITION',
         message: `無法從 ${order.status} 轉換為 ${dto.status}`,
-      })
+      });
     }
 
-    const timestamps: Partial<Record<string, Date>> = {}
-    if (dto.status === OrderStatus.paid) timestamps['paidAt'] = new Date()
-    if (dto.status === OrderStatus.shipped) timestamps['shippedAt'] = new Date()
-    if (dto.status === OrderStatus.completed) timestamps['completedAt'] = new Date()
+    const timestamps: Partial<Record<string, Date>> = {};
+    if (dto.status === OrderStatus.paid) timestamps['paidAt'] = new Date();
+    if (dto.status === OrderStatus.shipped) timestamps['shippedAt'] = new Date();
+    if (dto.status === OrderStatus.completed) timestamps['completedAt'] = new Date();
 
     await this.prisma.$transaction(async (tx) => {
       await tx.order.update({
@@ -366,7 +375,7 @@ export class OrdersService {
           ...(dto.trackingNumber !== undefined && { trackingNumber: dto.trackingNumber }),
           ...timestamps,
         },
-      })
+      });
 
       await tx.orderStatusHistory.create({
         data: {
@@ -376,7 +385,7 @@ export class OrdersService {
           changedBy: userId,
           note: dto.note,
         },
-      })
+      });
 
       if (dto.status === OrderStatus.completed) {
         await Promise.all(
@@ -389,15 +398,15 @@ export class OrdersService {
               },
             }),
           ),
-        )
+        );
       }
 
       if (dto.status === OrderStatus.refunded) {
-        await this.releaseReservedStock(tx, order.items)
+        await this.releaseReservedStock(tx, order.items);
       }
-    })
+    });
 
-    const result = await this.findById(userId, UserRole.wholesaler, orderId)
+    const result = await this.findById(userId, UserRole.wholesaler, orderId);
 
     this.eventEmitter.emit(
       ORDER_STATUS_CHANGED,
@@ -409,40 +418,51 @@ export class OrdersService {
         dto.status,
         null,
       ),
-    )
+    );
 
     // Re-check stock after actual decrement on completion
     if (dto.status === OrderStatus.completed) {
-      void this.inventory.checkVariants(order.items.map((i) => i.variantId))
+      void this.inventory.checkVariants(order.items.map((i) => i.variantId));
     }
 
-    return result
+    return result;
   }
 
   async cancel(userId: bigint, orderId: bigint) {
-    const retailer = await this.prisma.retailer.findUnique({ where: { userId } })
-    if (!retailer) throw new ForbiddenException()
+    const retailer = await this.prisma.retailer.findUnique({ where: { userId } });
+    if (!retailer) throw new ForbiddenException();
 
-    const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { items: true } })
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
     if (!order || order.retailerId !== retailer.id) {
-      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' })
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' });
     }
     if (order.status !== OrderStatus.pending) {
-      throw new BadRequestException({ code: 'INVALID_STATE_TRANSITION', message: '僅 pending 訂單可取消' })
+      throw new BadRequestException({
+        code: 'INVALID_STATE_TRANSITION',
+        message: '僅 pending 訂單可取消',
+      });
     }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
         data: { status: OrderStatus.cancelled, cancelledAt: new Date() },
-      })
+      });
       await tx.orderStatusHistory.create({
-        data: { orderId, fromStatus: OrderStatus.pending, toStatus: OrderStatus.cancelled, changedBy: userId },
-      })
-      await this.releaseReservedStock(tx, order.items)
-    })
+        data: {
+          orderId,
+          fromStatus: OrderStatus.pending,
+          toStatus: OrderStatus.cancelled,
+          changedBy: userId,
+        },
+      });
+      await this.releaseReservedStock(tx, order.items);
+    });
 
-    return this.findById(userId, UserRole.retailer, orderId)
+    return this.findById(userId, UserRole.retailer, orderId);
   }
 
   private async releaseReservedStock(
@@ -456,7 +476,7 @@ export class OrdersService {
           data: { reservedStock: { decrement: item.quantity } },
         }),
       ),
-    )
+    );
   }
 
   private async verifyAccess(
@@ -465,13 +485,13 @@ export class OrdersService {
     order: { retailer: { userId: bigint }; shopId: bigint },
   ): Promise<void> {
     if (role === UserRole.retailer) {
-      if (order.retailer.userId !== userId) throw new ForbiddenException()
+      if (order.retailer.userId !== userId) throw new ForbiddenException();
     } else if (role === UserRole.wholesaler) {
       const wholesaler = await this.prisma.wholesaler.findUnique({
         where: { userId },
         include: { shop: true },
-      })
-      if (wholesaler?.shop?.id !== order.shopId) throw new ForbiddenException()
+      });
+      if (wholesaler?.shop?.id !== order.shopId) throw new ForbiddenException();
     }
   }
 
@@ -485,6 +505,6 @@ export class OrdersService {
       createdAt: o.createdAt,
       shop: { id: o.shop.id.toString(), name: o.shop.name },
       retailer: { id: o.retailer.id.toString(), shopName: o.retailer.shopName },
-    }
+    };
   }
 }

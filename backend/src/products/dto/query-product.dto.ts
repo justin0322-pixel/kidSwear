@@ -1,54 +1,54 @@
-import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsDecimal, IsNumberString, IsOptional, IsString } from 'class-validator'
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsDecimal, IsNumberString, IsOptional, IsString } from 'class-validator';
 
 export class QueryProductDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsNumberString()
-  shopId?: string
+  shopId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  category?: string
+  category?: string;
 
   @ApiPropertyOptional({ description: '逗號分隔標籤名稱，例: 可愛,卡通' })
   @IsOptional()
   @IsString()
-  tags?: string
+  tags?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  search?: string
+  search?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
-  minPrice?: string
+  minPrice?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsDecimal({ decimal_digits: '0,2', force_decimal: false })
-  maxPrice?: string
+  maxPrice?: string;
 
   @ApiPropertyOptional({ default: '1' })
   @IsOptional()
   @IsNumberString()
-  page?: string
+  page?: string;
 
   @ApiPropertyOptional({ default: '20' })
   @IsOptional()
   @IsNumberString()
-  pageSize?: string
+  pageSize?: string;
 
   @ApiPropertyOptional({ description: '設為 true 時回傳所有狀態（批發商自己的商品）' })
   @IsOptional()
   @IsString()
-  includeInactive?: string
+  includeInactive?: string;
 
   @ApiPropertyOptional({ description: '直接篩選狀態：active | draft | sold_out | archived' })
   @IsOptional()
   @IsString()
-  status?: string
+  status?: string;
 }

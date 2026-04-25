@@ -1,21 +1,21 @@
-import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common'
-import { Test, TestingModule } from '@nestjs/testing'
-import * as cookieParser from 'cookie-parser'
-import { AppModule } from '../../src/app.module'
-import { PrismaService } from '../../src/prisma/prisma.service'
+import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import * as cookieParser from 'cookie-parser';
+import { AppModule } from '../../src/app.module';
+import { PrismaService } from '../../src/prisma/prisma.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type MockPrisma = Record<string, any>
+export type MockPrisma = Record<string, any>;
 
 export function buildMockPrisma(): MockPrisma {
   return {
-    user:        { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
-    wholesaler:  { create: jest.fn(), findUnique: jest.fn() },
-    retailer:    { create: jest.fn(), findUnique: jest.fn() },
-    shop:        { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn() },
-    product:     { findMany: jest.fn(), findFirst: jest.fn(), count: jest.fn() },
+    user: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+    wholesaler: { create: jest.fn(), findUnique: jest.fn() },
+    retailer: { create: jest.fn(), findUnique: jest.fn() },
+    shop: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+    product: { findMany: jest.fn(), findFirst: jest.fn(), count: jest.fn() },
     $transaction: jest.fn(),
-  }
+  };
 }
 
 export async function createTestApp(prisma: MockPrisma): Promise<INestApplication> {
@@ -24,15 +24,15 @@ export async function createTestApp(prisma: MockPrisma): Promise<INestApplicatio
   })
     .overrideProvider(PrismaService)
     .useValue(prisma)
-    .compile()
+    .compile();
 
-  const app = module.createNestApplication()
-  app.use(cookieParser())
-  app.setGlobalPrefix('api')
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' })
+  const app = module.createNestApplication();
+  app.use(cookieParser());
+  app.setGlobalPrefix('api');
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-  )
-  await app.init()
-  return app
+  );
+  await app.init();
+  return app;
 }

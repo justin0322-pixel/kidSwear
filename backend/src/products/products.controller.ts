@@ -14,40 +14,40 @@ import {
   Req,
   UseGuards,
   BadRequestException,
-} from '@nestjs/common'
-import { IsInt, IsOptional, IsString, Min, MaxLength } from 'class-validator'
-import { Type } from 'class-transformer'
+} from '@nestjs/common';
+import { IsInt, IsOptional, IsString, Min, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
 
 class AddVariantDto {
-  @IsString() @MaxLength(20) size!: string
-  @IsString() @MaxLength(30) color!: string
-  @IsInt() @Min(0) @Type(() => Number) stock!: number
-  @IsOptional() @IsString() price?: string
+  @IsString() @MaxLength(20) size!: string;
+  @IsString() @MaxLength(30) color!: string;
+  @IsInt() @Min(0) @Type(() => Number) stock!: number;
+  @IsOptional() @IsString() price?: string;
 }
 
 class UpdateVariantDto {
-  @IsOptional() @IsInt() @Min(0) @Type(() => Number) stock?: number
-  @IsOptional() @IsString() price?: string
+  @IsOptional() @IsInt() @Min(0) @Type(() => Number) stock?: number;
+  @IsOptional() @IsString() price?: string;
 }
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { ProductStatus, UserRole } from '@prisma/client'
-import { IsIn } from 'class-validator'
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ProductStatus, UserRole } from '@prisma/client';
+import { IsIn } from 'class-validator';
 
-const TOGGLEABLE_STATUSES = ['active', 'draft'] as const
-type ToggleableStatus = (typeof TOGGLEABLE_STATUSES)[number]
+const TOGGLEABLE_STATUSES = ['active', 'draft'] as const;
+type ToggleableStatus = (typeof TOGGLEABLE_STATUSES)[number];
 
 class ToggleStatusDto {
   @IsIn(TOGGLEABLE_STATUSES as unknown as string[])
-  status!: ToggleableStatus
+  status!: ToggleableStatus;
 }
-import type { Request } from 'express'
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
-import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard'
-import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
-import { CreateProductDto } from './dto/create-product.dto'
-import { QueryProductDto } from './dto/query-product.dto'
-import { UpdateProductDto } from './dto/update-product.dto'
-import { ProductsService } from './products.service'
+import type { Request } from 'express';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { CreateProductDto } from './dto/create-product.dto';
+import { QueryProductDto } from './dto/query-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { ProductsService } from './products.service';
 
 @ApiTags('products')
 @Controller({ path: 'products', version: '1' })
@@ -62,13 +62,14 @@ export class ProductsController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ): Promise<object> {
-    if (!q?.trim()) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '請提供搜尋關鍵字' })
+    if (!q?.trim())
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '請提供搜尋關鍵字' });
     const result = await this.productsService.fullTextSearch(
       q,
       shopId,
       page ? parseInt(page, 10) : 1,
       pageSize ? Math.min(50, parseInt(pageSize, 10)) : 20,
-    )
+    );
     return {
       success: true,
       data: result.items,
@@ -79,7 +80,7 @@ export class ProductsController {
         total: result.total,
         totalPages: Math.ceil(result.total / result.pageSize),
       },
-    }
+    };
   }
 
   @Get()
@@ -89,15 +90,15 @@ export class ProductsController {
     @Query() query: QueryProductDto,
     @Req() req: Request & { user?: JwtPayload },
   ): Promise<object> {
-    const retailerUserId = req.user?.role === 'retailer' ? BigInt(req.user.sub) : undefined
-    const result = await this.productsService.findAll(query, retailerUserId)
-    const { items, total, page, pageSize, isVipOnly, isVipMember } = result
+    const retailerUserId = req.user?.role === 'retailer' ? BigInt(req.user.sub) : undefined;
+    const result = await this.productsService.findAll(query, retailerUserId);
+    const { items, total, page, pageSize, isVipOnly, isVipMember } = result;
     return {
       success: true,
       data: items,
       meta: { isVipOnly, isVipMember },
       pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
-    }
+    };
   }
 
   @Get(':id')
@@ -107,9 +108,9 @@ export class ProductsController {
     @Param('id') id: string,
     @Req() req: Request & { user?: JwtPayload },
   ): Promise<object> {
-    const retailerUserId = req.user?.role === 'retailer' ? BigInt(req.user.sub) : undefined
-    const data = await this.productsService.findById(BigInt(id), retailerUserId)
-    return { success: true, data }
+    const retailerUserId = req.user?.role === 'retailer' ? BigInt(req.user.sub) : undefined;
+    const data = await this.productsService.findById(BigInt(id), retailerUserId);
+    return { success: true, data };
   }
 
   @Post()
@@ -120,9 +121,9 @@ export class ProductsController {
     @Req() req: Request & { user: JwtPayload },
     @Body() dto: CreateProductDto,
   ): Promise<object> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
-    const data = await this.productsService.create(BigInt(req.user.sub), dto)
-    return { success: true, data }
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    const data = await this.productsService.create(BigInt(req.user.sub), dto);
+    return { success: true, data };
   }
 
   @Put(':id')
@@ -134,9 +135,9 @@ export class ProductsController {
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
   ): Promise<object> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
-    const data = await this.productsService.update(BigInt(req.user.sub), BigInt(id), dto)
-    return { success: true, data }
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    const data = await this.productsService.update(BigInt(req.user.sub), BigInt(id), dto);
+    return { success: true, data };
   }
 
   @Patch(':id/status')
@@ -149,9 +150,13 @@ export class ProductsController {
     @Param('id') id: string,
     @Body() dto: ToggleStatusDto,
   ): Promise<object> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
-    await this.productsService.toggleStatus(BigInt(req.user.sub), BigInt(id), dto.status as ProductStatus)
-    return { success: true }
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    await this.productsService.toggleStatus(
+      BigInt(req.user.sub),
+      BigInt(id),
+      dto.status as ProductStatus,
+    );
+    return { success: true };
   }
 
   @Delete(':id')
@@ -159,12 +164,9 @@ export class ProductsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '刪除商品（軟刪除，批發商）' })
-  async remove(
-    @Req() req: Request & { user: JwtPayload },
-    @Param('id') id: string,
-  ): Promise<void> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
-    await this.productsService.remove(BigInt(req.user.sub), BigInt(id))
+  async remove(@Req() req: Request & { user: JwtPayload }, @Param('id') id: string): Promise<void> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    await this.productsService.remove(BigInt(req.user.sub), BigInt(id));
   }
 
   @Post(':id/variants')
@@ -176,9 +178,9 @@ export class ProductsController {
     @Param('id') id: string,
     @Body() dto: AddVariantDto,
   ): Promise<object> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
-    const data = await this.productsService.addVariant(BigInt(req.user.sub), BigInt(id), dto)
-    return { success: true, data }
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    const data = await this.productsService.addVariant(BigInt(req.user.sub), BigInt(id), dto);
+    return { success: true, data };
   }
 
   @Patch(':id/variants/:variantId')
@@ -192,11 +194,14 @@ export class ProductsController {
     @Param('variantId') variantId: string,
     @Body() dto: UpdateVariantDto,
   ): Promise<object> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
     const data = await this.productsService.updateVariant(
-      BigInt(req.user.sub), BigInt(id), BigInt(variantId), dto,
-    )
-    return { success: true, data }
+      BigInt(req.user.sub),
+      BigInt(id),
+      BigInt(variantId),
+      dto,
+    );
+    return { success: true, data };
   }
 
   @Delete(':id/variants/:variantId')
@@ -209,7 +214,7 @@ export class ProductsController {
     @Param('id') id: string,
     @Param('variantId') variantId: string,
   ): Promise<void> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
-    await this.productsService.removeVariant(BigInt(req.user.sub), BigInt(id), BigInt(variantId))
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    await this.productsService.removeVariant(BigInt(req.user.sub), BigInt(id), BigInt(variantId));
   }
 }

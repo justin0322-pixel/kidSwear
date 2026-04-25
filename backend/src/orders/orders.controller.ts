@@ -10,15 +10,14 @@ import {
   Query,
   Req,
   UseGuards,
-} from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { UserRole } from '@prisma/client'
-import type { Request } from 'express'
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
-import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
-import { CreateOrderDto } from './dto/create-order.dto'
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto'
-import { OrdersService } from './orders.service'
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { OrdersService } from './orders.service';
 
 @ApiTags('orders')
 @Controller({ path: 'orders', version: '1' })
@@ -33,8 +32,8 @@ export class OrdersController {
     @Req() req: Request & { user: JwtPayload },
     @Body() dto: CreateOrderDto,
   ): Promise<object> {
-    const data = await this.ordersService.create(BigInt(req.user.sub), dto)
-    return { success: true, data }
+    const data = await this.ordersService.create(BigInt(req.user.sub), dto);
+    return { success: true, data };
   }
 
   @Get()
@@ -46,8 +45,8 @@ export class OrdersController {
     @Query('pageSize') pageSize = '20',
     @Query('search') search?: string,
   ): Promise<object> {
-    const p = Math.max(1, parseInt(page, 10))
-    const ps = Math.min(100, Math.max(1, parseInt(pageSize, 10)))
+    const p = Math.max(1, parseInt(page, 10));
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize, 10)));
     const { items, total } = await this.ordersService.findAll(
       BigInt(req.user.sub),
       req.user.role,
@@ -55,12 +54,12 @@ export class OrdersController {
       p,
       ps,
       search,
-    )
+    );
     return {
       success: true,
       data: items,
       pagination: { page: p, pageSize: ps, total, totalPages: Math.ceil(total / ps) },
-    }
+    };
   }
 
   @Get(':id')
@@ -69,8 +68,8 @@ export class OrdersController {
     @Req() req: Request & { user: JwtPayload },
     @Param('id') id: string,
   ): Promise<object> {
-    const data = await this.ordersService.findById(BigInt(req.user.sub), req.user.role, BigInt(id))
-    return { success: true, data }
+    const data = await this.ordersService.findById(BigInt(req.user.sub), req.user.role, BigInt(id));
+    return { success: true, data };
   }
 
   @Patch(':id/status')
@@ -81,8 +80,8 @@ export class OrdersController {
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
   ): Promise<object> {
-    const data = await this.ordersService.updateStatus(BigInt(req.user.sub), BigInt(id), dto)
-    return { success: true, data }
+    const data = await this.ordersService.updateStatus(BigInt(req.user.sub), BigInt(id), dto);
+    return { success: true, data };
   }
 
   @Post(':id/cancel')
@@ -92,7 +91,7 @@ export class OrdersController {
     @Req() req: Request & { user: JwtPayload },
     @Param('id') id: string,
   ): Promise<object> {
-    const data = await this.ordersService.cancel(BigInt(req.user.sub), BigInt(id))
-    return { success: true, data }
+    const data = await this.ordersService.cancel(BigInt(req.user.sub), BigInt(id));
+    return { success: true, data };
   }
 }

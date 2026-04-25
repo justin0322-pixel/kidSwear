@@ -1,21 +1,21 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import { Prisma, ProductStatus } from '@prisma/client'
-import { PrismaService } from '../prisma/prisma.service'
-import { CreateProductDto } from './dto/create-product.dto'
-import { QueryProductDto } from './dto/query-product.dto'
-import { UpdateProductDto } from './dto/update-product.dto'
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Prisma, ProductStatus } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { QueryProductDto } from './dto/query-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  private readonly logger = new Logger(ProductsService.name)
-  private readonly recommenderUrl: string
+  private readonly logger = new Logger(ProductsService.name);
+  private readonly recommenderUrl: string;
 
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
-    this.recommenderUrl = config.get<string>('RECOMMENDER_URL') ?? 'http://localhost:8000'
+    this.recommenderUrl = config.get<string>('RECOMMENDER_URL') ?? 'http://localhost:8000';
   }
 
   private triggerEmbedTask(productId: bigint): void {
@@ -24,28 +24,30 @@ export class ProductsService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ product_id: Number(productId) }),
     }).catch((err: unknown) => {
-      this.logger.warn(`embed-product task trigger failed for product ${productId}: ${String(err)}`)
-    })
+      this.logger.warn(
+        `embed-product task trigger failed for product ${productId}: ${String(err)}`,
+      );
+    });
   }
 
   async fullTextSearch(q: string, shopId?: string, page = 1, pageSize = 20) {
-    const offset = (page - 1) * pageSize
-    const term = q.trim()
+    const offset = (page - 1) * pageSize;
+    const term = q.trim();
 
     type RawRow = {
-      id: bigint
-      name: string
-      category: string
-      base_price: string
-      shop_id: bigint
-      shop_name: string
-      primary_image_url: string | null
-      rank: number
-      headline: string
-      total_count: bigint
-    }
+      id: bigint;
+      name: string;
+      category: string;
+      base_price: string;
+      shop_id: bigint;
+      shop_name: string;
+      primary_image_url: string | null;
+      rank: number;
+      headline: string;
+      total_count: bigint;
+    };
 
-    const shopFilter = shopId ? Prisma.sql`AND p.shop_id = ${BigInt(shopId)}` : Prisma.sql``
+    const shopFilter = shopId ? Prisma.sql`AND p.shop_id = ${BigInt(shopId)}` : Prisma.sql``;
 
     const rows = await this.prisma.$queryRaw<RawRow[]>`
       SELECT
@@ -83,9 +85,9 @@ export class ProductsService {
         ${shopFilter}
       ORDER BY rank DESC, p.name
       LIMIT ${pageSize} OFFSET ${offset}
-    `
+    `;
 
-    const total = rows.length > 0 ? Number(rows[0].total_count) : 0
+    const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
     return {
       items: rows.map((r) => ({
         id: r.id.toString(),
@@ -101,58 +103,67 @@ export class ProductsService {
       page,
       pageSize,
       query: term,
-    }
+    };
   }
 
   async findAll(query: QueryProductDto, retailerUserId?: bigint) {
-    const page = Math.max(1, parseInt(query.page ?? '1', 10))
-    const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize ?? '20', 10)))
+    const page = Math.max(1, parseInt(query.page ?? '1', 10));
+    const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize ?? '20', 10)));
     const tagNames = query.tags
       ?.split(',')
       .map((t) => t.trim())
-      .filter(Boolean)
+      .filter(Boolean);
 
     // VIP 商城存取控制：只有在指定 shopId 時才需要檢查
-    let isVipMember = false
-    let vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>()
+    let isVipMember = false;
+    let vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>();
 
     if (query.shopId) {
-      const shopId = BigInt(query.shopId)
+      const shopId = BigInt(query.shopId);
       const shop = await this.prisma.shop.findFirst({
         where: { id: shopId, deletedAt: null },
         select: { isVipOnly: true },
-      })
+      });
 
       if (shop?.isVipOnly) {
         // 需要確認零售商身份
         if (retailerUserId) {
-          const retailer = await this.prisma.retailer.findUnique({ where: { userId: retailerUserId } })
+          const retailer = await this.prisma.retailer.findUnique({
+            where: { userId: retailerUserId },
+          });
           if (retailer) {
             const membership = await this.prisma.shopVipMember.findUnique({
               where: { shopId_retailerId: { shopId, retailerId: retailer.id } },
-            })
-            isVipMember = !!membership
+            });
+            isVipMember = !!membership;
           }
         }
         // 非 VIP 且是 VIP 商城 → 回傳空列表
         if (!isVipMember) {
-          return { items: [], total: 0, page, pageSize, isVipOnly: true, isVipMember: false }
+          return { items: [], total: 0, page, pageSize, isVipOnly: true, isVipMember: false };
         }
       }
 
       // VIP 成員：載入折扣設定
       if (isVipMember) {
-        const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId } })
-        vipDiscountMap = new Map(discounts.map((d) => [d.variantId.toString(), { type: d.discountType, value: d.discountValue }]))
+        const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId } });
+        vipDiscountMap = new Map(
+          discounts.map((d) => [
+            d.variantId.toString(),
+            { type: d.discountType, value: d.discountValue },
+          ]),
+        );
       }
     }
 
-    const includeInactive = query.includeInactive === 'true'
+    const includeInactive = query.includeInactive === 'true';
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       ...(query.status
         ? { status: query.status as ProductStatus }
-        : includeInactive ? {} : { status: ProductStatus.active }),
+        : includeInactive
+          ? {}
+          : { status: ProductStatus.active }),
       ...(query.shopId && { shopId: BigInt(query.shopId) }),
       ...(query.category && { category: query.category }),
       ...(query.search && { name: { contains: query.search, mode: 'insensitive' as const } }),
@@ -161,7 +172,7 @@ export class ProductsService {
       ...(tagNames?.length && {
         productTags: { some: { tag: { name: { in: tagNames } } } },
       }),
-    }
+    };
 
     const [raw, total] = await Promise.all([
       this.prisma.product.findMany({
@@ -192,21 +203,22 @@ export class ProductsService {
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.product.count({ where }),
-    ])
+    ]);
 
     return {
       items: raw.map((p) => {
-        const basePrice = p.basePrice
+        const basePrice = p.basePrice;
         // 若有 VIP 折扣，取最低 VIP 價作為展示基底價
-        let displayBasePrice = basePrice
+        let displayBasePrice = basePrice;
         if (vipDiscountMap.size > 0) {
           for (const v of p.variants) {
-            const disc = vipDiscountMap.get(v.id.toString())
+            const disc = vipDiscountMap.get(v.id.toString());
             if (disc) {
-              const vipPrice = disc.type === 'percentage'
-                ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100)))
-                : disc.value
-              if (vipPrice.lessThan(displayBasePrice)) displayBasePrice = vipPrice
+              const vipPrice =
+                disc.type === 'percentage'
+                  ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100)))
+                  : disc.value;
+              if (vipPrice.lessThan(displayBasePrice)) displayBasePrice = vipPrice;
             }
           }
         }
@@ -216,7 +228,8 @@ export class ProductsService {
           status: p.status,
           category: p.category,
           basePrice: basePrice.toString(),
-          vipPrice: vipDiscountMap.size > 0 ? displayBasePrice.toDecimalPlaces(2).toString() : undefined,
+          vipPrice:
+            vipDiscountMap.size > 0 ? displayBasePrice.toDecimalPlaces(2).toString() : undefined,
           primaryImageUrl: p.images[0]?.url ?? null,
           tags: p.productTags.map((pt) => ({
             id: Number(pt.tag.id),
@@ -224,17 +237,16 @@ export class ProductsService {
             color: pt.tag.color,
           })),
           shop: { id: p.shop.id.toString(), name: p.shop.name },
-          lowStockCount: p.variants.filter(
-            (v) => v.stock - v.reservedStock <= v.lowStockThreshold,
-          ).length,
-        }
+          lowStockCount: p.variants.filter((v) => v.stock - v.reservedStock <= v.lowStockThreshold)
+            .length,
+        };
       }),
       total,
       page,
       pageSize,
       isVipOnly: false,
       isVipMember,
-    }
+    };
   }
 
   async findById(id: bigint, retailerUserId?: bigint) {
@@ -246,20 +258,28 @@ export class ProductsService {
         productTags: { include: { tag: true } },
         shop: { select: { id: true, name: true, slug: true, isVipOnly: true } },
       },
-    })
-    if (!product) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品不存在' })
+    });
+    if (!product)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品不存在' });
 
     // VIP 折扣：確認零售商是否為此商城的 VIP 成員
-    let vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>()
+    let vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>();
     if (retailerUserId) {
-      const retailer = await this.prisma.retailer.findUnique({ where: { userId: retailerUserId } })
+      const retailer = await this.prisma.retailer.findUnique({ where: { userId: retailerUserId } });
       if (retailer) {
         const membership = await this.prisma.shopVipMember.findUnique({
           where: { shopId_retailerId: { shopId: product.shopId, retailerId: retailer.id } },
-        })
+        });
         if (membership) {
-          const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId: product.shopId } })
-          vipDiscountMap = new Map(discounts.map((d) => [d.variantId.toString(), { type: d.discountType, value: d.discountValue }]))
+          const discounts = await this.prisma.variantVipDiscount.findMany({
+            where: { shopId: product.shopId },
+          });
+          vipDiscountMap = new Map(
+            discounts.map((d) => [
+              d.variantId.toString(),
+              { type: d.discountType, value: d.discountValue },
+            ]),
+          );
         }
       }
     }
@@ -283,13 +303,13 @@ export class ProductsService {
         altText: img.altText,
       })),
       variants: product.variants.map((v) => {
-        const basePrice = v.priceOverride ?? product.basePrice
-        const disc = vipDiscountMap.get(v.id.toString())
+        const basePrice = v.priceOverride ?? product.basePrice;
+        const disc = vipDiscountMap.get(v.id.toString());
         const vipPrice = disc
-          ? (disc.type === 'percentage'
-              ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100))).toDecimalPlaces(2)
-              : disc.value)
-          : null
+          ? disc.type === 'percentage'
+            ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100))).toDecimalPlaces(2)
+            : disc.value
+          : null;
         return {
           id: v.id.toString(),
           sku: v.sku,
@@ -298,7 +318,7 @@ export class ProductsService {
           price: basePrice.toString(),
           vipPrice: vipPrice?.toString() ?? undefined,
           stock: v.stock,
-        }
+        };
       }),
       tags: product.productTags.map((pt) => pt.tag.name),
       shop: {
@@ -307,11 +327,11 @@ export class ProductsService {
         slug: product.shop.slug,
         isVipOnly: product.shop.isVipOnly,
       },
-    }
+    };
   }
 
   async create(userId: bigint, dto: CreateProductDto) {
-    const shop = await this.getShopOrFail(userId)
+    const shop = await this.getShopOrFail(userId);
 
     const productId = await this.prisma.$transaction(async (tx) => {
       const product = await tx.product.create({
@@ -330,9 +350,9 @@ export class ProductsService {
           attributes: (dto.attributes ?? {}) as Prisma.InputJsonValue,
           status: ProductStatus.active,
         },
-      })
+      });
 
-      const skuBase = (dto.skuPrefix ?? `P${product.id}`).toUpperCase()
+      const skuBase = (dto.skuPrefix ?? `P${product.id}`).toUpperCase();
       await tx.productVariant.createMany({
         data: dto.variants.map((v, i) => ({
           productId: product.id,
@@ -342,13 +362,13 @@ export class ProductsService {
           stock: v.stock,
           priceOverride: v.priceOverride ? new Prisma.Decimal(v.priceOverride) : undefined,
         })),
-      })
+      });
 
       if (dto.tags?.length) {
         await tx.productTag.createMany({
           data: dto.tags.map((tagId) => ({ productId: product.id, tagId: BigInt(tagId) })),
           skipDuplicates: true,
-        })
+        });
       }
 
       if (dto.imageUrls?.length) {
@@ -359,21 +379,21 @@ export class ProductsService {
             sortOrder: i,
             isPrimary: i === 0,
           })),
-        })
+        });
       }
 
-      return product.id
-    })
+      return product.id;
+    });
 
     if (dto.imageUrls?.length) {
-      this.triggerEmbedTask(productId)
+      this.triggerEmbedTask(productId);
     }
 
-    return this.findById(productId)
+    return this.findById(productId);
   }
 
   async update(userId: bigint, productId: bigint, dto: UpdateProductDto) {
-    await this.verifyOwnership(userId, productId)
+    await this.verifyOwnership(userId, productId);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({
@@ -388,22 +408,24 @@ export class ProductsService {
           ...(dto.suggestedRetailPrice !== undefined && {
             suggestedRetailPrice: new Prisma.Decimal(dto.suggestedRetailPrice),
           }),
-          ...(dto.attributes !== undefined && { attributes: dto.attributes as Prisma.InputJsonValue }),
+          ...(dto.attributes !== undefined && {
+            attributes: dto.attributes as Prisma.InputJsonValue,
+          }),
         },
-      })
+      });
 
       if (dto.tags !== undefined) {
-        await tx.productTag.deleteMany({ where: { productId } })
+        await tx.productTag.deleteMany({ where: { productId } });
         if (dto.tags.length > 0) {
           await tx.productTag.createMany({
             data: dto.tags.map((tagId) => ({ productId, tagId: BigInt(tagId) })),
             skipDuplicates: true,
-          })
+          });
         }
       }
 
       if (dto.imageUrls !== undefined) {
-        await tx.productImage.deleteMany({ where: { productId } })
+        await tx.productImage.deleteMany({ where: { productId } });
         if (dto.imageUrls.length > 0) {
           await tx.productImage.createMany({
             data: dto.imageUrls.map((url, i) => ({
@@ -412,32 +434,32 @@ export class ProductsService {
               sortOrder: i,
               isPrimary: i === 0,
             })),
-          })
+          });
         }
       }
-    })
+    });
 
     if (dto.imageUrls?.length) {
-      this.triggerEmbedTask(productId)
+      this.triggerEmbedTask(productId);
     }
 
-    return this.findById(productId)
+    return this.findById(productId);
   }
 
   async remove(userId: bigint, productId: bigint): Promise<void> {
-    await this.verifyOwnership(userId, productId)
+    await this.verifyOwnership(userId, productId);
     await this.prisma.product.update({
       where: { id: productId },
       data: { deletedAt: new Date(), status: ProductStatus.archived },
-    })
+    });
   }
 
   async toggleStatus(userId: bigint, productId: bigint, status: ProductStatus): Promise<void> {
-    await this.verifyOwnership(userId, productId)
+    await this.verifyOwnership(userId, productId);
     await this.prisma.product.update({
       where: { id: productId },
       data: { status },
-    })
+    });
   }
 
   async addVariant(
@@ -445,11 +467,11 @@ export class ProductsService {
     productId: bigint,
     dto: { size: string; color: string; stock: number; price?: string },
   ) {
-    await this.verifyOwnership(userId, productId)
-    const product = await this.prisma.product.findUniqueOrThrow({ where: { id: productId } })
-    const skuBase = (product.skuPrefix ?? `P${productId}`).toUpperCase()
-    const count = await this.prisma.productVariant.count({ where: { productId } })
-    const sku = `${skuBase}-${dto.size}-${dto.color}-${count}`.toUpperCase().replace(/\s+/g, '')
+    await this.verifyOwnership(userId, productId);
+    const product = await this.prisma.product.findUniqueOrThrow({ where: { id: productId } });
+    const skuBase = (product.skuPrefix ?? `P${productId}`).toUpperCase();
+    const count = await this.prisma.productVariant.count({ where: { productId } });
+    const sku = `${skuBase}-${dto.size}-${dto.color}-${count}`.toUpperCase().replace(/\s+/g, '');
     const variant = await this.prisma.productVariant.create({
       data: {
         productId,
@@ -459,7 +481,7 @@ export class ProductsService {
         stock: dto.stock,
         priceOverride: dto.price ? new Prisma.Decimal(dto.price) : undefined,
       },
-    })
+    });
     return {
       id: variant.id.toString(),
       sku: variant.sku,
@@ -467,7 +489,7 @@ export class ProductsService {
       color: variant.color,
       price: (variant.priceOverride ?? product.basePrice).toString(),
       stock: variant.stock,
-    }
+    };
   }
 
   async updateVariant(
@@ -476,11 +498,12 @@ export class ProductsService {
     variantId: bigint,
     dto: { stock?: number; price?: string },
   ) {
-    await this.verifyOwnership(userId, productId)
+    await this.verifyOwnership(userId, productId);
     const variant = await this.prisma.productVariant.findFirst({
       where: { id: variantId, productId },
-    })
-    if (!variant) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '規格不存在' })
+    });
+    if (!variant)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '規格不存在' });
 
     const updated = await this.prisma.productVariant.update({
       where: { id: variantId },
@@ -488,8 +511,8 @@ export class ProductsService {
         ...(dto.stock !== undefined && { stock: dto.stock }),
         ...(dto.price !== undefined && { priceOverride: new Prisma.Decimal(dto.price) }),
       },
-    })
-    const product = await this.prisma.product.findUniqueOrThrow({ where: { id: productId } })
+    });
+    const product = await this.prisma.product.findUniqueOrThrow({ where: { id: productId } });
     return {
       id: updated.id.toString(),
       sku: updated.sku,
@@ -497,37 +520,42 @@ export class ProductsService {
       color: updated.color,
       price: (updated.priceOverride ?? product.basePrice).toString(),
       stock: updated.stock,
-    }
+    };
   }
 
   async removeVariant(userId: bigint, productId: bigint, variantId: bigint): Promise<void> {
-    await this.verifyOwnership(userId, productId)
+    await this.verifyOwnership(userId, productId);
     const variant = await this.prisma.productVariant.findFirst({
       where: { id: variantId, productId },
       select: { id: true, reservedStock: true },
-    })
-    if (!variant) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '規格不存在' })
+    });
+    if (!variant)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '規格不存在' });
     if (variant.reservedStock > 0) {
-      throw new ForbiddenException({ code: 'VARIANT_HAS_RESERVED_STOCK', message: '此規格有未出貨訂單，無法刪除' })
+      throw new ForbiddenException({
+        code: 'VARIANT_HAS_RESERVED_STOCK',
+        message: '此規格有未出貨訂單，無法刪除',
+      });
     }
-    await this.prisma.productVariant.delete({ where: { id: variantId } })
+    await this.prisma.productVariant.delete({ where: { id: variantId } });
   }
 
   private async getShopOrFail(userId: bigint) {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
       include: { shop: true },
-    })
-    if (!wholesaler?.shop) throw new ForbiddenException()
-    return wholesaler.shop
+    });
+    if (!wholesaler?.shop) throw new ForbiddenException();
+    return wholesaler.shop;
   }
 
   private async verifyOwnership(userId: bigint, productId: bigint): Promise<void> {
-    const shop = await this.getShopOrFail(userId)
+    const shop = await this.getShopOrFail(userId);
     const product = await this.prisma.product.findFirst({
       where: { id: productId, shopId: shop.id, deletedAt: null },
       select: { id: true },
-    })
-    if (!product) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品不存在' })
+    });
+    if (!product)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品不存在' });
   }
 }

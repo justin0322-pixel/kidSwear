@@ -1,14 +1,14 @@
-import { Logger } from '@nestjs/common'
+import { Logger } from '@nestjs/common';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   WebSocketGateway,
   WebSocketServer,
-} from '@nestjs/websockets'
-import { ConfigService } from '@nestjs/config'
-import { JwtService } from '@nestjs/jwt'
-import { Server, Socket } from 'socket.io'
-import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
+} from '@nestjs/websockets';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Server, Socket } from 'socket.io';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 @WebSocketGateway({
   cors: { origin: '*', credentials: true },
@@ -16,9 +16,9 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
 })
 export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server!: Server
+  server!: Server;
 
-  private readonly logger = new Logger(NotificationsGateway.name)
+  private readonly logger = new Logger(NotificationsGateway.name);
 
   constructor(
     private readonly jwt: JwtService,
@@ -28,32 +28,32 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   async handleConnection(client: Socket): Promise<void> {
     const token =
       (client.handshake.auth as Record<string, string | undefined>).token ??
-      (client.handshake.headers.authorization ?? '').replace('Bearer ', '')
+      (client.handshake.headers.authorization ?? '').replace('Bearer ', '');
 
     if (!token) {
-      this.logger.warn(`WS connection rejected: no token (${client.id})`)
-      client.disconnect()
-      return
+      this.logger.warn(`WS connection rejected: no token (${client.id})`);
+      client.disconnect();
+      return;
     }
 
     try {
       const payload = this.jwt.verify<JwtPayload>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      })
+      });
       // Join personal room keyed by user ID
-      await client.join(`user:${payload.sub}`)
-      this.logger.log(`WS connected: user=${payload.sub} socket=${client.id}`)
+      await client.join(`user:${payload.sub}`);
+      this.logger.log(`WS connected: user=${payload.sub} socket=${client.id}`);
     } catch {
-      this.logger.warn(`WS connection rejected: invalid token (${client.id})`)
-      client.disconnect()
+      this.logger.warn(`WS connection rejected: invalid token (${client.id})`);
+      client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket): void {
-    this.logger.log(`WS disconnected: socket=${client.id}`)
+    this.logger.log(`WS disconnected: socket=${client.id}`);
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {
-    this.server.to(`user:${userId}`).emit(event, data)
+    this.server.to(`user:${userId}`).emit(event, data);
   }
 }

@@ -1,16 +1,24 @@
-import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { IsIn, IsString, MaxLength } from 'class-validator'
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
-import { UploadsService } from './uploads.service'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IsIn, IsString, MaxLength } from 'class-validator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UploadsService } from './uploads.service';
 
 class PresignDto {
   @IsString()
   @MaxLength(200)
-  filename!: string
+  filename!: string;
 
   @IsIn(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
-  contentType!: string
+  contentType!: string;
 }
 
 @ApiTags('uploads')
@@ -25,10 +33,10 @@ export class UploadsController {
   @ApiOperation({ summary: '取得圖片上傳 presigned URL（批發商）' })
   async presign(@Body() dto: PresignDto): Promise<object> {
     try {
-      const result = await this.uploads.createPresignedUpload(dto.filename, dto.contentType)
-      return { success: true, data: result }
+      const result = await this.uploads.createPresignedUpload(dto.filename, dto.contentType);
+      return { success: true, data: result };
     } catch (err) {
-      throw new BadRequestException({ code: 'UPLOAD_ERROR', message: String(err) })
+      throw new BadRequestException({ code: 'UPLOAD_ERROR', message: String(err) });
     }
   }
 }

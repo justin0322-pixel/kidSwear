@@ -9,34 +9,34 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
-} from '@nestjs/common'
-import type { Request } from 'express'
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
-import { JwtPayload } from '../auth/interfaces/jwt-payload.interface'
-import { ApiBearerAuth } from '@nestjs/swagger'
-import { UserRole } from '@prisma/client'
-import { FileInterceptor } from '@nestjs/platform-express'
-import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
-import { Type } from 'class-transformer'
-import { RecommendationsService, SearchResponse, TagSuggestion } from './recommendations.service'
+} from '@nestjs/common';
+import type { Request } from 'express';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { RecommendationsService, TagSuggestion } from './recommendations.service';
 
-type MulterFile = { buffer: Buffer; mimetype: string; originalname: string }
+type MulterFile = { buffer: Buffer; mimetype: string; originalname: string };
 
 class TextSearchDto {
   @IsString()
-  query!: string
+  query!: string;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
   @Max(50)
-  limit?: number
+  limit?: number;
 
   @IsOptional()
   @IsString()
-  category?: string
+  category?: string;
 }
 
 @ApiTags('recommendations')
@@ -52,12 +52,12 @@ export class RecommendationsController {
     @Req() req: Request & { user: JwtPayload },
     @Query('limit') limit = '12',
   ): Promise<object> {
-    if (req.user.role !== UserRole.retailer) throw new ForbiddenException()
+    if (req.user.role !== UserRole.retailer) throw new ForbiddenException();
     const data = await this.service.getForUser(
       req.user.sub,
       Math.min(50, Math.max(1, parseInt(limit, 10))),
-    )
-    return { success: true, data }
+    );
+    return { success: true, data };
   }
 
   @Get('similar')
@@ -69,15 +69,15 @@ export class RecommendationsController {
     const data = await this.service.similarProducts(
       parseInt(productId, 10),
       Math.min(50, Math.max(1, parseInt(limit, 10))),
-    )
-    return { success: true, data }
+    );
+    return { success: true, data };
   }
 
   @Post('search/text')
   @ApiOperation({ summary: '以文字語意搜尋商品（CLIP）' })
   async searchByText(@Body() dto: TextSearchDto): Promise<object> {
-    const data = await this.service.searchByText(dto.query, dto.limit ?? 12, dto.category)
-    return { success: true, data }
+    const data = await this.service.searchByText(dto.query, dto.limit ?? 12, dto.category);
+    return { success: true, data };
   }
 
   @Post('search/image')
@@ -95,8 +95,8 @@ export class RecommendationsController {
       file.originalname,
       Math.min(50, Math.max(1, parseInt(limit, 10))),
       category,
-    )
-    return { success: true, data }
+    );
+    return { success: true, data };
   }
 
   @Post('tags/suggest')
@@ -109,12 +109,12 @@ export class RecommendationsController {
     @Req() req: Request & { user: JwtPayload },
     @UploadedFile() file: MulterFile,
   ): Promise<object> {
-    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException()
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
     const tags: TagSuggestion[] = await this.service.suggestTags(
       file.buffer,
       file.mimetype,
       file.originalname,
-    )
-    return { success: true, data: { tags } }
+    );
+    return { success: true, data: { tags } };
   }
 }

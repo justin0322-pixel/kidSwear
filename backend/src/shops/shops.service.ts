@@ -1,8 +1,13 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { DiscountType, Prisma } from '@prisma/client'
-import { PrismaService } from '../prisma/prisma.service'
-import { UpdateShopDto } from './dto/update-shop.dto'
-import { AddVipMemberDto, SetVipDiscountDto } from './dto/vip.dto'
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { DiscountType, Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { UpdateShopDto } from './dto/update-shop.dto';
+import { AddVipMemberDto, SetVipDiscountDto } from './dto/vip.dto';
 
 const SHOP_SELECT = {
   id: true,
@@ -15,9 +20,9 @@ const SHOP_SELECT = {
   isActive: true,
   isVipOnly: true,
   _count: { select: { products: true } },
-} satisfies Prisma.ShopSelect
+} satisfies Prisma.ShopSelect;
 
-type ShopRow = Prisma.ShopGetPayload<{ select: typeof SHOP_SELECT }>
+type ShopRow = Prisma.ShopGetPayload<{ select: typeof SHOP_SELECT }>;
 
 @Injectable()
 export class ShopsService {
@@ -28,45 +33,52 @@ export class ShopsService {
     pageSize: number,
     search?: string,
   ): Promise<{ items: ReturnType<ShopsService['format']>[]; total: number }> {
-    const skip = (page - 1) * pageSize
+    const skip = (page - 1) * pageSize;
     const where: Prisma.ShopWhereInput = {
       isActive: true,
       deletedAt: null,
       ...(search && { name: { contains: search, mode: 'insensitive' as const } }),
-    }
+    };
     const [items, total] = await Promise.all([
-      this.prisma.shop.findMany({ where, skip, take: pageSize, select: SHOP_SELECT, orderBy: { createdAt: 'desc' } }),
+      this.prisma.shop.findMany({
+        where,
+        skip,
+        take: pageSize,
+        select: SHOP_SELECT,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.shop.count({ where }),
-    ])
-    return { items: items.map((s) => this.format(s)), total }
+    ]);
+    return { items: items.map((s) => this.format(s)), total };
   }
 
   async findById(id: bigint): Promise<ReturnType<ShopsService['format']>> {
     const shop = await this.prisma.shop.findFirst({
       where: { id, deletedAt: null },
       select: SHOP_SELECT,
-    })
-    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
-    return this.format(shop)
+    });
+    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' });
+    return this.format(shop);
   }
 
   async findBySlug(slug: string): Promise<ReturnType<ShopsService['format']>> {
     const shop = await this.prisma.shop.findFirst({
       where: { slug, isActive: true, deletedAt: null },
       select: SHOP_SELECT,
-    })
-    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
-    return this.format(shop)
+    });
+    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' });
+    return this.format(shop);
   }
 
   async findMyShop(userId: bigint): Promise<ReturnType<ShopsService['format']>> {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
       include: { shop: { select: SHOP_SELECT } },
-    })
-    if (!wholesaler) throw new ForbiddenException()
-    if (!wholesaler.shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城尚未建立' })
-    return this.format(wholesaler.shop)
+    });
+    if (!wholesaler) throw new ForbiddenException();
+    if (!wholesaler.shop)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城尚未建立' });
+    return this.format(wholesaler.shop);
   }
 
   // ── VIP helpers ──────────────────────────────────────────────────────────
@@ -75,35 +87,45 @@ export class ShopsService {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
       include: { shop: { select: { id: true } } },
-    })
-    if (!wholesaler?.shop) throw new ForbiddenException()
-    return wholesaler.shop.id
+    });
+    if (!wholesaler?.shop) throw new ForbiddenException();
+    return wholesaler.shop.id;
   }
 
   async isVipMember(shopId: bigint, retailerId: bigint): Promise<boolean> {
     const record = await this.prisma.shopVipMember.findUnique({
       where: { shopId_retailerId: { shopId, retailerId } },
-    })
-    return !!record
+    });
+    return !!record;
   }
 
-  async getVipDiscountsForRetailer(shopId: bigint): Promise<Map<string, { type: DiscountType; value: Prisma.Decimal }>> {
-    const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId } })
-    return new Map(discounts.map((d) => [d.variantId.toString(), { type: d.discountType, value: d.discountValue }]))
+  async getVipDiscountsForRetailer(
+    shopId: bigint,
+  ): Promise<Map<string, { type: DiscountType; value: Prisma.Decimal }>> {
+    const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId } });
+    return new Map(
+      discounts.map((d) => [
+        d.variantId.toString(),
+        { type: d.discountType, value: d.discountValue },
+      ]),
+    );
   }
 
-  async setVipMode(userId: bigint, isVipOnly: boolean): Promise<ReturnType<ShopsService['format']>> {
-    const shopId = await this.getMyShopId(userId)
+  async setVipMode(
+    userId: bigint,
+    isVipOnly: boolean,
+  ): Promise<ReturnType<ShopsService['format']>> {
+    const shopId = await this.getMyShopId(userId);
     const updated = await this.prisma.shop.update({
       where: { id: shopId },
       data: { isVipOnly },
       select: SHOP_SELECT,
-    })
-    return this.format(updated)
+    });
+    return this.format(updated);
   }
 
   async listVipMembers(userId: bigint) {
-    const shopId = await this.getMyShopId(userId)
+    const shopId = await this.getMyShopId(userId);
     const members = await this.prisma.shopVipMember.findMany({
       where: { shopId },
       include: {
@@ -112,46 +134,54 @@ export class ShopsService {
         },
       },
       orderBy: { createdAt: 'desc' },
-    })
+    });
     return members.map((m) => ({
       id: m.id.toString(),
       retailerId: m.retailer.id.toString(),
       shopName: m.retailer.shopName,
       email: m.retailer.user.email ?? '',
       createdAt: m.createdAt,
-    }))
+    }));
   }
 
   async addVipMember(userId: bigint, dto: AddVipMemberDto) {
-    const shopId = await this.getMyShopId(userId)
+    const shopId = await this.getMyShopId(userId);
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       include: { retailer: true },
-    })
+    });
     if (!user?.retailer) {
-      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '找不到此 Email 的零售商帳號' })
+      throw new NotFoundException({
+        code: 'RESOURCE_NOT_FOUND',
+        message: '找不到此 Email 的零售商帳號',
+      });
     }
     const existing = await this.prisma.shopVipMember.findUnique({
       where: { shopId_retailerId: { shopId, retailerId: user.retailer.id } },
-    })
+    });
     if (existing) {
-      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '此零售商已是 VIP 成員' })
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '此零售商已是 VIP 成員' });
     }
-    await this.prisma.shopVipMember.create({ data: { shopId, retailerId: user.retailer.id } })
-    return { retailerId: user.retailer.id.toString(), shopName: user.retailer.shopName, email: user.email }
+    await this.prisma.shopVipMember.create({ data: { shopId, retailerId: user.retailer.id } });
+    return {
+      retailerId: user.retailer.id.toString(),
+      shopName: user.retailer.shopName,
+      email: user.email,
+    };
   }
 
   async removeVipMember(userId: bigint, retailerId: bigint) {
-    const shopId = await this.getMyShopId(userId)
+    const shopId = await this.getMyShopId(userId);
     const record = await this.prisma.shopVipMember.findUnique({
       where: { shopId_retailerId: { shopId, retailerId } },
-    })
-    if (!record) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'VIP 成員不存在' })
-    await this.prisma.shopVipMember.delete({ where: { id: record.id } })
+    });
+    if (!record)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'VIP 成員不存在' });
+    await this.prisma.shopVipMember.delete({ where: { id: record.id } });
   }
 
   async listVipDiscounts(userId: bigint) {
-    const shopId = await this.getMyShopId(userId)
+    const shopId = await this.getMyShopId(userId);
     const discounts = await this.prisma.variantVipDiscount.findMany({
       where: { shopId },
       include: {
@@ -160,7 +190,7 @@ export class ShopsService {
         },
       },
       orderBy: { createdAt: 'desc' },
-    })
+    });
     return discounts.map((d) => ({
       id: d.id.toString(),
       variantId: d.variantId.toString(),
@@ -170,49 +200,70 @@ export class ShopsService {
       color: d.variant.color,
       discountType: d.discountType,
       discountValue: d.discountValue.toString(),
-    }))
+    }));
   }
 
   async setVipDiscount(userId: bigint, variantId: bigint, dto: SetVipDiscountDto) {
-    const shopId = await this.getMyShopId(userId)
+    const shopId = await this.getMyShopId(userId);
     const variant = await this.prisma.productVariant.findFirst({
       where: { id: variantId },
       include: { product: { select: { shopId: true, name: true } } },
-    })
+    });
     if (!variant || variant.product.shopId !== shopId) {
-      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品規格不存在或不屬於此商城' })
+      throw new NotFoundException({
+        code: 'RESOURCE_NOT_FOUND',
+        message: '商品規格不存在或不屬於此商城',
+      });
     }
-    if (dto.discountType === DiscountType.percentage && (dto.discountValue < 0 || dto.discountValue > 100)) {
-      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: '百分比折扣須介於 0-100' })
+    if (
+      dto.discountType === DiscountType.percentage &&
+      (dto.discountValue < 0 || dto.discountValue > 100)
+    ) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '百分比折扣須介於 0-100',
+      });
     }
     const discount = await this.prisma.variantVipDiscount.upsert({
       where: { variantId_shopId: { variantId, shopId } },
-      create: { variantId, shopId, discountType: dto.discountType, discountValue: new Prisma.Decimal(dto.discountValue) },
-      update: { discountType: dto.discountType, discountValue: new Prisma.Decimal(dto.discountValue) },
-    })
+      create: {
+        variantId,
+        shopId,
+        discountType: dto.discountType,
+        discountValue: new Prisma.Decimal(dto.discountValue),
+      },
+      update: {
+        discountType: dto.discountType,
+        discountValue: new Prisma.Decimal(dto.discountValue),
+      },
+    });
     return {
       id: discount.id.toString(),
       variantId: discount.variantId.toString(),
       discountType: discount.discountType,
       discountValue: discount.discountValue.toString(),
-    }
+    };
   }
 
   async removeVipDiscount(userId: bigint, variantId: bigint) {
-    const shopId = await this.getMyShopId(userId)
+    const shopId = await this.getMyShopId(userId);
     const record = await this.prisma.variantVipDiscount.findUnique({
       where: { variantId_shopId: { variantId, shopId } },
-    })
-    if (!record) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'VIP 折扣設定不存在' })
-    await this.prisma.variantVipDiscount.delete({ where: { id: record.id } })
+    });
+    if (!record)
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'VIP 折扣設定不存在' });
+    await this.prisma.variantVipDiscount.delete({ where: { id: record.id } });
   }
 
-  async updateMyShop(userId: bigint, dto: UpdateShopDto): Promise<ReturnType<ShopsService['format']>> {
-    const wholesaler = await this.prisma.wholesaler.findUnique({ where: { userId } })
-    if (!wholesaler) throw new ForbiddenException()
+  async updateMyShop(
+    userId: bigint,
+    dto: UpdateShopDto,
+  ): Promise<ReturnType<ShopsService['format']>> {
+    const wholesaler = await this.prisma.wholesaler.findUnique({ where: { userId } });
+    if (!wholesaler) throw new ForbiddenException();
 
-    const shop = await this.prisma.shop.findUnique({ where: { wholesalerId: wholesaler.id } })
-    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' })
+    const shop = await this.prisma.shop.findUnique({ where: { wholesalerId: wholesaler.id } });
+    if (!shop) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商城不存在' });
 
     const updated = await this.prisma.shop.update({
       where: { id: shop.id },
@@ -226,21 +277,23 @@ export class ShopsService {
         }),
       },
       select: SHOP_SELECT,
-    })
-    return this.format(updated)
+    });
+    return this.format(updated);
   }
 
-  async getMyStats(userId: bigint): Promise<{ todayOrders: number; monthRevenue: string; productCount: number }> {
+  async getMyStats(
+    userId: bigint,
+  ): Promise<{ todayOrders: number; monthRevenue: string; productCount: number }> {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
       include: { shop: { select: { id: true } } },
-    })
-    if (!wholesaler || !wholesaler.shop) throw new ForbiddenException()
+    });
+    if (!wholesaler || !wholesaler.shop) throw new ForbiddenException();
 
-    const shopId = wholesaler.shop.id
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const shopId = wholesaler.shop.id;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [todayOrders, monthRevenueResult, productCount] = await Promise.all([
       this.prisma.order.count({
@@ -257,27 +310,38 @@ export class ShopsService {
       this.prisma.product.count({
         where: { shopId, deletedAt: null },
       }),
-    ])
+    ]);
 
     return {
       todayOrders,
       monthRevenue: (monthRevenueResult._sum?.total ?? new Prisma.Decimal(0)).toString(),
       productCount,
-    }
+    };
   }
 
   async getAnalytics(userId: bigint) {
     const wholesaler = await this.prisma.wholesaler.findUnique({
       where: { userId },
       include: { shop: { select: { id: true } } },
-    })
-    if (!wholesaler?.shop) throw new ForbiddenException()
+    });
+    if (!wholesaler?.shop) throw new ForbiddenException();
 
-    const shopId = wholesaler.shop.id
+    const shopId = wholesaler.shop.id;
 
-    type RevenueRow = { date: Date; revenue: string; order_count: bigint }
-    type TopProductRow = { id: string; name: string; order_count: bigint; total_quantity: bigint; revenue: string }
-    type TopRetailerRow = { id: string; shop_name: string; order_count: bigint; total_amount: string }
+    type RevenueRow = { date: Date; revenue: string; order_count: bigint };
+    type TopProductRow = {
+      id: string;
+      name: string;
+      order_count: bigint;
+      total_quantity: bigint;
+      revenue: string;
+    };
+    type TopRetailerRow = {
+      id: string;
+      shop_name: string;
+      order_count: bigint;
+      total_amount: string;
+    };
 
     const [revenueByDay, topProducts, topRetailers, statusGroups] = await Promise.all([
       this.prisma.$queryRaw<RevenueRow[]>(Prisma.sql`
@@ -327,7 +391,7 @@ export class ShopsService {
         where: { shopId },
         _count: { status: true },
       }),
-    ])
+    ]);
 
     return {
       revenueByDay: revenueByDay.map((r) => ({
@@ -348,10 +412,8 @@ export class ShopsService {
         orderCount: Number(r.order_count),
         totalAmount: r.total_amount,
       })),
-      orderStatusCounts: Object.fromEntries(
-        statusGroups.map((g) => [g.status, g._count.status]),
-      ),
-    }
+      orderStatusCounts: Object.fromEntries(statusGroups.map((g) => [g.status, g._count.status])),
+    };
   }
 
   private format(shop: ShopRow) {
@@ -359,6 +421,6 @@ export class ShopsService {
       ...shop,
       id: shop.id.toString(),
       minOrderAmount: shop.minOrderAmount.toString(),
-    }
+    };
   }
 }
