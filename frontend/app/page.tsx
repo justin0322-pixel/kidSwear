@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import ShopsPreview from '@/components/home/ShopsPreview'
+import ProductsPreview from '@/components/home/ProductsPreview'
 import { Navbar } from '@/components/layout/Navbar'
 
 export default function HomePage() {
@@ -92,8 +93,34 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* 熱門商品 */}
       <section className="py-16 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-bold text-gray-900">熱門商品</h2>
+            <Link
+              href="/shops"
+              className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
+            >
+              瀏覽商城 →
+            </Link>
+          </div>
+          <Suspense
+            fallback={
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />
+                ))}
+              </div>
+            }
+          >
+            <ProductsPreview />
+          </Suspense>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-16 px-6 bg-gray-50">
         <div className="max-w-xl mx-auto text-center space-y-4">
           <h2 className="text-2xl font-bold text-gray-900">準備好了嗎？</h2>
           <p className="text-gray-500">加入我們，批發商上架商品、零售商智慧進貨，全程線上管理。</p>

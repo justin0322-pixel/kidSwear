@@ -10,6 +10,7 @@ export type ProductVariant = {
   size: string
   color: string
   price: string
+  vipPrice?: string
   stock: number
 }
 
@@ -41,9 +42,10 @@ export type ProductDetail = Omit<Product, 'tags' | 'shop'> & {
   ageRange: string | null
   gender: string | null
   attributes: Record<string, string>
+  isVipMember: boolean
   images: { id: string; url: string; isPrimary: boolean; altText: string | null }[]
   tags: string[]
-  shop: { id: string; name: string; slug: string }
+  shop: { id: string; name: string; slug: string; isVipOnly: boolean }
 }
 
 type ProductsResponse = {

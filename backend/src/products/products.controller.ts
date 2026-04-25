@@ -101,9 +101,14 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: '取得商品詳情' })
-  async findById(@Param('id') id: string): Promise<object> {
-    const data = await this.productsService.findById(BigInt(id))
+  async findById(
+    @Param('id') id: string,
+    @Req() req: Request & { user?: JwtPayload },
+  ): Promise<object> {
+    const retailerUserId = req.user?.role === 'retailer' ? BigInt(req.user.sub) : undefined
+    const data = await this.productsService.findById(BigInt(id), retailerUserId)
     return { success: true, data }
   }
 

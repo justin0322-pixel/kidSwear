@@ -237,17 +237,32 @@ export class ProductsService {
     }
   }
 
-  async findById(id: bigint) {
+  async findById(id: bigint, retailerUserId?: bigint) {
     const product = await this.prisma.product.findFirst({
       where: { id, deletedAt: null },
       include: {
         images: { orderBy: { sortOrder: 'asc' } },
         variants: { orderBy: [{ size: 'asc' }, { color: 'asc' }] },
         productTags: { include: { tag: true } },
-        shop: { select: { id: true, name: true, slug: true } },
+        shop: { select: { id: true, name: true, slug: true, isVipOnly: true } },
       },
     })
     if (!product) throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '商品不存在' })
+
+    // VIP 折扣：確認零售商是否為此商城的 VIP 成員
+    let vipDiscountMap = new Map<string, { type: string; value: Prisma.Decimal }>()
+    if (retailerUserId) {
+      const retailer = await this.prisma.retailer.findUnique({ where: { userId: retailerUserId } })
+      if (retailer) {
+        const membership = await this.prisma.shopVipMember.findUnique({
+          where: { shopId_retailerId: { shopId: product.shopId, retailerId: retailer.id } },
+        })
+        if (membership) {
+          const discounts = await this.prisma.variantVipDiscount.findMany({ where: { shopId: product.shopId } })
+          vipDiscountMap = new Map(discounts.map((d) => [d.variantId.toString(), { type: d.discountType, value: d.discountValue }]))
+        }
+      }
+    }
 
     return {
       id: product.id.toString(),
@@ -260,22 +275,38 @@ export class ProductsService {
       suggestedRetailPrice: product.suggestedRetailPrice?.toString() ?? null,
       attributes: product.attributes,
       status: product.status,
+      isVipMember: vipDiscountMap.size > 0,
       images: product.images.map((img) => ({
         id: img.id.toString(),
         url: img.url,
         isPrimary: img.isPrimary,
         altText: img.altText,
       })),
-      variants: product.variants.map((v) => ({
-        id: v.id.toString(),
-        sku: v.sku,
-        size: v.size,
-        color: v.color,
-        price: (v.priceOverride ?? product.basePrice).toString(),
-        stock: v.stock,
-      })),
+      variants: product.variants.map((v) => {
+        const basePrice = v.priceOverride ?? product.basePrice
+        const disc = vipDiscountMap.get(v.id.toString())
+        const vipPrice = disc
+          ? (disc.type === 'percentage'
+              ? basePrice.mul(new Prisma.Decimal(1).sub(disc.value.div(100))).toDecimalPlaces(2)
+              : disc.value)
+          : null
+        return {
+          id: v.id.toString(),
+          sku: v.sku,
+          size: v.size,
+          color: v.color,
+          price: basePrice.toString(),
+          vipPrice: vipPrice?.toString() ?? undefined,
+          stock: v.stock,
+        }
+      }),
       tags: product.productTags.map((pt) => pt.tag.name),
-      shop: { id: product.shop.id.toString(), name: product.shop.name, slug: product.shop.slug },
+      shop: {
+        id: product.shop.id.toString(),
+        name: product.shop.name,
+        slug: product.shop.slug,
+        isVipOnly: product.shop.isVipOnly,
+      },
     }
   }
 

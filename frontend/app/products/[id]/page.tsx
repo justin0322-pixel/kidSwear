@@ -181,6 +181,11 @@ export default function ProductDetailPage() {
           <div className="space-y-5">
             <div>
               <div className="flex flex-wrap gap-1 mb-2">
+                {product.shop.isVipOnly && (
+                  <span className="text-xs font-medium bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                    VIP 商城
+                  </span>
+                )}
                 {product.tags.map((tag) => (
                   <span key={tag} className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
                     {tag}
@@ -188,10 +193,35 @@ export default function ProductDetailPage() {
                 ))}
               </div>
               <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-              <div className="flex items-baseline gap-3 mt-2">
-                <span className="text-2xl font-bold text-gray-900">
-                  NT${Number(selectedVariant?.price ?? product.basePrice).toLocaleString('zh-TW')}
-                </span>
+              <div className="mt-2 space-y-1">
+                {(() => {
+                  const basePrice = selectedVariant?.price ?? product.basePrice
+                  const vipPrice = selectedVariant?.vipPrice
+                  if (vipPrice) {
+                    return (
+                      <div className="flex items-baseline gap-3">
+                        <span className="text-2xl font-bold text-amber-600">
+                          VIP NT${Number(vipPrice).toLocaleString('zh-TW')}
+                        </span>
+                        <span className="text-base text-gray-400 line-through">
+                          NT${Number(basePrice).toLocaleString('zh-TW')}
+                        </span>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-2xl font-bold text-gray-900">
+                        NT${Number(basePrice).toLocaleString('zh-TW')}
+                      </span>
+                      {product.isVipMember && !selectedVariant && (
+                        <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                          選擇規格查看 VIP 價
+                        </span>
+                      )}
+                    </div>
+                  )
+                })()}
                 {product.suggestedRetailPrice && (
                   <span className="text-sm text-gray-400">
                     建議售價 NT${Number(product.suggestedRetailPrice).toLocaleString('zh-TW')}
