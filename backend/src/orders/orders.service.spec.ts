@@ -57,13 +57,15 @@ describe('OrdersService', () => {
 
   beforeEach(async () => {
     p = {
-      retailer:       { findUnique: jest.fn() },
-      wholesaler:     { findUnique: jest.fn() },
-      shop:           { findFirst: jest.fn() },
-      productVariant: { findMany: jest.fn(), update: jest.fn() },
-      order:          { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
-      orderStatusHistory: { create: jest.fn() },
-      $transaction:   jest.fn(),
+      retailer:            { findUnique: jest.fn() },
+      wholesaler:          { findUnique: jest.fn() },
+      shop:                { findFirst: jest.fn() },
+      productVariant:      { findMany: jest.fn(), update: jest.fn() },
+      order:               { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+      orderStatusHistory:  { create: jest.fn() },
+      shopVipMember:       { findUnique: jest.fn().mockResolvedValue(null) },
+      variantVipDiscount:  { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction:        jest.fn(),
     }
 
     const module: TestingModule = await Test.createTestingModule({
