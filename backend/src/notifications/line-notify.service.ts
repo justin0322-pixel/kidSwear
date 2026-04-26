@@ -82,4 +82,11 @@ export class LineNotifyService {
     });
     return wholesaler?.lineNotifyToken ?? null;
   }
+
+  async unlink(userId: bigint): Promise<void> {
+    await this.prisma.wholesaler.update({
+      where: { userId },
+      data: { lineNotifyToken: null },
+    });
+  }
 }

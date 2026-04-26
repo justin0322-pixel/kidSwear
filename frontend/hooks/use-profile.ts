@@ -83,3 +83,25 @@ export function useChangePassword() {
     },
   })
 }
+
+export function useLineNotifyStatus() {
+  return useQuery({
+    queryKey: ['line-notify-status'],
+    queryFn: async () => {
+      const res = await api.get<{ data: { bound: boolean } }>('/auth/line-notify/status')
+      return res.data.data.bound
+    },
+  })
+}
+
+export function useUnlinkLineNotify() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      await api.delete('/auth/line-notify')
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['line-notify-status'] })
+    },
+  })
+}

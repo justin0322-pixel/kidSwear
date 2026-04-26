@@ -24,6 +24,7 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { UsersService } from '../users/users.service';
+import { LineNotifyService } from '../notifications/line-notify.service';
 
 class UpdateProfileDto {
   @IsOptional() @IsString() @MaxLength(100) shopName?: string;
@@ -43,6 +44,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly lineNotify: LineNotifyService,
   ) {}
 
   @Post('register')
@@ -244,5 +246,71 @@ export class AuthController {
     if (req.user.role !== UserRole.retailer) throw new ForbiddenException();
     const data = await this.usersService.updateRetailerProfile(BigInt(req.user.sub), dto);
     return { success: true, data };
+  }
+
+  // ── LINE Notify ────────────────────────────────────────────────────────────
+
+  @Get('line-notify/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '查詢 LINE Notify 綁定狀態（批發商）' })
+  async getLineNotifyStatus(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    const token = await this.lineNotify.getTokenByUserId(BigInt(req.user.sub));
+    return { success: true, data: { bound: token !== null } };
+  }
+
+  @Get('line-notify/bind')
+  @ApiOperation({ summary: 'LINE Notify 綁定起始（批發商，帶 token query param）' })
+  lineNotifyBindStart(@Query('token') token: string, @Res() res: Response): void {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    try {
+      const payload = this.authService.verifyAccessToken(token);
+      const state = Math.random().toString(36).slice(2);
+      res.cookie('oauth_state', state, { httpOnly: true, maxAge: 10 * 60 * 1000 });
+      res.cookie('oauth_bind_user_id', payload.sub, { httpOnly: true, maxAge: 10 * 60 * 1000 });
+      res.redirect(this.lineNotify.buildAuthUrl(state));
+    } catch {
+      res.redirect(`${frontendUrl}/wholesaler/profile?error=notify_bind_failed`);
+    }
+  }
+
+  @Get('line-notify/callback')
+  @ApiOperation({ summary: 'LINE Notify OAuth 回呼' })
+  async lineNotifyCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const cookies = req.cookies as Record<string, string | undefined>;
+    const cookieState = cookies['oauth_state'];
+    const userId = cookies['oauth_bind_user_id'];
+    res.clearCookie('oauth_state');
+    res.clearCookie('oauth_bind_user_id');
+
+    if (!code || state !== cookieState || !userId) {
+      res.redirect(`${frontendUrl}/wholesaler/profile?error=notify_bind_failed`);
+      return;
+    }
+
+    try {
+      await this.lineNotify.exchangeAndSave(BigInt(userId), code);
+      res.redirect(`${frontendUrl}/wholesaler/profile?bound=line_notify`);
+    } catch {
+      res.redirect(`${frontendUrl}/wholesaler/profile?error=notify_bind_failed`);
+    }
+  }
+
+  @Delete('line-notify')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '解除 LINE Notify 綁定（批發商）' })
+  async unlinkLineNotify(@Req() req: Request & { user: JwtPayload }): Promise<object> {
+    if (req.user.role !== UserRole.wholesaler) throw new ForbiddenException();
+    await this.lineNotify.unlink(BigInt(req.user.sub));
+    return { success: true, data: null };
   }
 }

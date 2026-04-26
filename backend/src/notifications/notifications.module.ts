@@ -25,6 +25,6 @@ import { LineNotifyService } from './line-notify.service';
     EmailService,
     LineNotifyService,
   ],
-  exports: [NotificationsService],
+  exports: [NotificationsService, LineNotifyService],
 })
 export class NotificationsModule {}

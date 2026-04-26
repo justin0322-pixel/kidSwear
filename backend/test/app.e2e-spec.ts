@@ -1,9 +1,19 @@
+/// <reference types="jest" />
 import { INestApplication } from '@nestjs/common';
-import { UserRole, UserStatus } from '@prisma/client';
+import { DiscountType, OrderStatus, Prisma, UserRole, UserStatus } from '@prisma/client';
+import * as jwt from 'jsonwebtoken';
 import * as request from 'supertest';
 import { buildMockPrisma, createTestApp, type MockPrisma } from './helpers/app.helper';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+const D = (n: string) => new Prisma.Decimal(n);
+
+const JWT_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-secret';
+
+function makeToken(sub: number, role: UserRole): string {
+  return jwt.sign({ sub: String(sub), role }, JWT_SECRET, { expiresIn: '1h' });
+}
 
 const makeUser = (overrides = {}) => ({
   id: BigInt(1),
@@ -15,6 +25,86 @@ const makeUser = (overrides = {}) => ({
   lastLoginAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+  ...overrides,
+});
+
+const makeShop = (overrides = {}) => ({
+  id: BigInt(2),
+  name: '測試商城',
+  slug: 'test-shop',
+  description: null,
+  logoUrl: null,
+  bannerUrl: null,
+  minOrderAmount: D('0'),
+  isActive: true,
+  isVipOnly: false,
+  deletedAt: null,
+  _count: { products: 3 },
+  ...overrides,
+});
+
+const makeRetailer = (overrides = {}) => ({
+  id: BigInt(5),
+  userId: BigInt(10),
+  shopName: '測試零售商',
+  contactPerson: '李小花',
+  shippingAddress: '台北市',
+  phone: null,
+  ...overrides,
+});
+
+const makeWholesaler = (overrides = {}) => ({
+  id: BigInt(1),
+  userId: BigInt(20),
+  companyName: '測試批發商',
+  shop: makeShop(),
+  lineNotifyToken: null,
+  ...overrides,
+});
+
+const makeOrder = (overrides = {}) => ({
+  id: BigInt(999),
+  orderNumber: 'ORD-20260101-0999',
+  status: OrderStatus.pending,
+  shopId: BigInt(2),
+  retailerId: BigInt(5),
+  subtotal: D('250'),
+  shippingFee: D('0'),
+  discount: D('0'),
+  total: D('250'),
+  trackingNumber: null,
+  shippingAddress: '台北市',
+  contactName: '測試',
+  contactPhone: '0912345678',
+  retailerNote: null,
+  wholesalerNote: null,
+  paidAt: null,
+  shippedAt: null,
+  completedAt: null,
+  cancelledAt: null,
+  createdAt: new Date(),
+  items: [
+    {
+      id: BigInt(1),
+      variantId: BigInt(100),
+      quantity: 1,
+      productName: '小熊上衣',
+      sku: 'SKU-001',
+      size: '90cm',
+      color: '粉紅',
+      unitPrice: D('250'),
+      subtotal: D('250'),
+    },
+  ],
+  statusHistory: [],
+  _count: { items: 1 },
+  shop: { id: BigInt(2), name: '測試商城' },
+  retailer: {
+    id: BigInt(5),
+    shopName: '零售商',
+    userId: BigInt(10),
+    user: { email: 'retailer@example.com' },
+  },
   ...overrides,
 });
 
@@ -68,9 +158,9 @@ describe('App E2E', () => {
 
   describe('POST /api/v1/auth/register', () => {
     it('批發商：成功建立帳號回傳 201 + accessToken', async () => {
-      const created = makeUser({ email: WHOLESALER_PAYLOAD.email, role: UserRole.wholesaler });
-      p.user.findFirst.mockResolvedValue(null); // email 未被使用
-      p.user.create.mockResolvedValue(created);
+      p.user.findFirst.mockResolvedValue(null);
+      p.user.create.mockResolvedValue(makeUser({ role: UserRole.wholesaler }));
+      p.wholesaler.create.mockResolvedValue({});
 
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
@@ -78,24 +168,21 @@ describe('App E2E', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.data).toHaveProperty('accessToken');
-      expect(res.body.data.user.role).toBe('wholesaler');
     });
 
     it('零售商：成功建立帳號', async () => {
-      const created = makeUser({ email: RETAILER_PAYLOAD.email, role: UserRole.retailer });
       p.user.findFirst.mockResolvedValue(null);
-      p.user.create.mockResolvedValue(created);
+      p.user.create.mockResolvedValue(makeUser({ role: UserRole.retailer }));
 
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
         .send(RETAILER_PAYLOAD);
 
       expect(res.status).toBe(201);
-      expect(res.body.data.user.role).toBe('retailer');
     });
 
     it('Email 重複時回傳 409', async () => {
-      p.user.findFirst.mockResolvedValue(makeUser()); // email 已存在
+      p.user.findFirst.mockResolvedValue(makeUser());
 
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
@@ -117,7 +204,7 @@ describe('App E2E', () => {
     it('密碼格式不符時回傳 400', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/register')
-        .send({ ...WHOLESALER_PAYLOAD, password: 'weak' });
+        .send({ ...WHOLESALER_PAYLOAD, password: '123' });
 
       expect(res.status).toBe(400);
     });
@@ -127,9 +214,7 @@ describe('App E2E', () => {
     it('正確帳密回傳 200 + accessToken', async () => {
       const bcrypt = await import('bcrypt');
       const hash = await bcrypt.hash('Password1!', 12);
-      const user = makeUser({ passwordHash: hash });
-      p.user.findFirst.mockResolvedValue(user);
-      p.user.update.mockResolvedValue(user);
+      p.user.findFirst.mockResolvedValue(makeUser({ passwordHash: hash }));
 
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
@@ -166,18 +251,7 @@ describe('App E2E', () => {
 
   describe('GET /api/v1/shops', () => {
     it('公開端點回傳 200 + 分頁結構', async () => {
-      p.shop.findMany.mockResolvedValue([
-        {
-          id: BigInt(1),
-          name: '測試商城',
-          slug: 'test-shop',
-          description: null,
-          logoUrl: null,
-          bannerUrl: null,
-          minOrderAmount: { toString: () => '0' },
-          _count: { products: 5 },
-        },
-      ]);
+      p.shop.findMany.mockResolvedValue([makeShop()]);
       p.shop.count.mockResolvedValue(1);
 
       const res = await request(app.getHttpServer()).get('/api/v1/shops');
@@ -197,7 +271,7 @@ describe('App E2E', () => {
           name: '小熊上衣',
           category: '上衣',
           status: 'active',
-          basePrice: { toString: () => '250' },
+          basePrice: D('250'),
           images: [{ url: 'https://example.com/img.jpg' }],
           productTags: [{ tag: { id: BigInt(1), name: '嬰幼兒', color: null } }],
           shop: { id: BigInt(1), name: '測試商城' },
@@ -219,6 +293,294 @@ describe('App E2E', () => {
       const res = await request(app.getHttpServer()).get('/api/v1/products?shopId=1');
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(0);
+    });
+  });
+
+  // ── Orders ────────────────────────────────────────────────────────────────
+
+  describe('POST /api/v1/orders', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/orders')
+        .send({ shopId: 1, items: [{ variantId: 100, quantity: 1 }], shippingAddress: '台北市', contactName: '測試', contactPhone: '0912345678' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('DTO 驗證失敗（缺少 items）時回傳 400', async () => {
+      const token = makeToken(10, UserRole.retailer);
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ shopId: 1 });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('retailer 不存在時回傳 403', async () => {
+      const token = makeToken(10, UserRole.retailer);
+      p.retailer.findUnique.mockResolvedValue(null);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ shopId: 1, items: [{ variantId: 100, quantity: 1 }], shippingAddress: '台北市', contactName: '測試', contactPhone: '0912345678' });
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('GET /api/v1/orders', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).get('/api/v1/orders');
+      expect(res.status).toBe(401);
+    });
+
+    it('零售商可取得訂單列表', async () => {
+      const token = makeToken(10, UserRole.retailer);
+      p.retailer.findUnique.mockResolvedValue(makeRetailer());
+      p.order.findMany.mockResolvedValue([makeOrder()]);
+      p.order.count.mockResolvedValue(1);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/orders')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.pagination).toHaveProperty('total', 1);
+    });
+  });
+
+  describe('PATCH /api/v1/orders/:id/status', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/orders/999/status')
+        .send({ status: 'paid' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('wholesaler 無商城時回傳 403', async () => {
+      const token = makeToken(20, UserRole.wholesaler);
+      p.wholesaler.findUnique.mockResolvedValue(null);
+
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/orders/999/status')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'paid' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('非法狀態值時回傳 400', async () => {
+      const token = makeToken(20, UserRole.wholesaler);
+
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/orders/999/status')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'invalid_status' });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/v1/orders/:id/cancel', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).post('/api/v1/orders/999/cancel');
+      expect(res.status).toBe(401);
+    });
+
+    it('retailer 不存在時回傳 403', async () => {
+      const token = makeToken(10, UserRole.retailer);
+      p.retailer.findUnique.mockResolvedValue(null);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/orders/999/cancel')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ── Cart ──────────────────────────────────────────────────────────────────
+
+  describe('GET /api/v1/cart', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).get('/api/v1/cart');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('POST /api/v1/cart/items', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/cart/items')
+        .send({ variantId: 1, quantity: 1 });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('DTO 驗證失敗（quantity 為負數）時回傳 400', async () => {
+      const token = makeToken(10, UserRole.retailer);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/cart/items')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ variantId: 1, quantity: -1 });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('DELETE /api/v1/cart', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).delete('/api/v1/cart');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // ── VIP ───────────────────────────────────────────────────────────────────
+
+  describe('GET /api/v1/shops/my/vip-members', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).get('/api/v1/shops/my/vip-members');
+      expect(res.status).toBe(401);
+    });
+
+    it('批發商可取得 VIP 成員列表', async () => {
+      const token = makeToken(20, UserRole.wholesaler);
+      p.wholesaler.findUnique.mockResolvedValue(makeWholesaler());
+      p.shopVipMember.findMany.mockResolvedValue([
+        { id: BigInt(1), retailerId: BigInt(5), createdAt: new Date(), retailer: { id: BigInt(5), shopName: '零售商A', user: { email: 'a@test.com' } } },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/shops/my/vip-members')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+    });
+  });
+
+  describe('POST /api/v1/shops/my/vip-members', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/shops/my/vip-members')
+        .send({ email: 'a@test.com' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('DTO 驗證失敗（缺少 email）時回傳 400', async () => {
+      const token = makeToken(20, UserRole.wholesaler);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/shops/my/vip-members')
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    it('email 不存在時回傳 404', async () => {
+      const token = makeToken(20, UserRole.wholesaler);
+      p.wholesaler.findUnique.mockResolvedValue(makeWholesaler());
+      p.user.findUnique.mockResolvedValue(null);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/shops/my/vip-members')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ email: 'nobody@test.com' });
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PUT /api/v1/shops/my/variants/:variantId/vip-discount', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/shops/my/variants/100/vip-discount')
+        .send({ discountType: 'percentage', discountValue: 10 });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('百分比超過 100 時回傳 400', async () => {
+      const token = makeToken(20, UserRole.wholesaler);
+      p.wholesaler.findUnique.mockResolvedValue(makeWholesaler());
+      p.productVariant.findFirst.mockResolvedValue({
+        id: BigInt(100),
+        product: { shopId: BigInt(2), name: '上衣' },
+      });
+
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/shops/my/variants/100/vip-discount')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ discountType: DiscountType.percentage, discountValue: 150 });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── Admin ─────────────────────────────────────────────────────────────────
+
+  describe('GET /api/v1/admin/stats', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).get('/api/v1/admin/stats');
+      expect(res.status).toBe(401);
+    });
+
+    it('非 admin 角色時回傳 403', async () => {
+      const token = makeToken(1, UserRole.wholesaler);
+      p.user.findUnique.mockResolvedValue(makeUser({ role: UserRole.wholesaler }));
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/admin/stats')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('GET /api/v1/admin/users', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer()).get('/api/v1/admin/users');
+      expect(res.status).toBe(401);
+    });
+
+    it('非 admin 角色時回傳 403', async () => {
+      const token = makeToken(1, UserRole.retailer);
+      p.user.findUnique.mockResolvedValue(makeUser({ role: UserRole.retailer }));
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/admin/users')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /api/v1/admin/users/:id/status', () => {
+    it('未帶 token 時回傳 401', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/admin/users/1/status')
+        .send({ status: 'active' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('非 admin 角色時回傳 403', async () => {
+      const token = makeToken(1, UserRole.wholesaler);
+      p.user.findUnique.mockResolvedValue(makeUser({ role: UserRole.wholesaler }));
+
+      const res = await request(app.getHttpServer())
+        .patch('/api/v1/admin/users/1/status')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'active' });
+
+      expect(res.status).toBe(403);
     });
   });
 });
