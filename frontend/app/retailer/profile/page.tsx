@@ -112,7 +112,7 @@ export default function RetailerProfilePage() {
   const { data: oauthAccounts, isLoading: oauthLoading } = useOAuthAccounts()
   const { mutate: unlink, isPending: unlinkPending } = useUnlinkOAuth()
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1').replace(/\/api\/v1\/?$/, '')
   const lineBindUrl = `${apiBase}/api/v1/auth/line/bind?token=${accessToken ?? ''}`
   const googleBindUrl = `${apiBase}/api/v1/auth/google/bind?token=${accessToken ?? ''}`
 

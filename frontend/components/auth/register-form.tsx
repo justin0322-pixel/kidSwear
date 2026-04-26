@@ -47,7 +47,7 @@ export function RegisterForm() {
   const { setAuth } = useAuthStore()
   const [error, setError] = useState<string | null>(null)
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'
+  const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1').replace(/\/api\/v1\/?$/, '')
   const lineLoginUrl = `${apiBase}/api/v1/auth/line`
   const googleLoginUrl = `${apiBase}/api/v1/auth/google`
 

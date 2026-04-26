@@ -137,6 +137,23 @@ export function useOrder(id: number) {
   })
 }
 
+export function useUpdateTracking(orderId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (trackingNumber: string) => {
+      const res = await api.patch<{ data: OrderDetail }>(
+        `/orders/${orderId}/tracking`,
+        { trackingNumber },
+      )
+      return res.data.data
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['order', orderId], updated)
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+    },
+  })
+}
+
 export function useUpdateOrderStatus(orderId: number) {
   const queryClient = useQueryClient()
   return useMutation({

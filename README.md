@@ -5,7 +5,7 @@
 
 [![Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20NestJS%20%7C%20FastAPI-blue)]()
 [![DB](https://img.shields.io/badge/DB-PostgreSQL%20%2B%20pgvector-336791)]()
-[![Tests](https://img.shields.io/badge/Tests-28%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/Tests-87%20passing-brightgreen)]()
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF)]()
 [![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ED)]()
 
@@ -33,9 +33,10 @@
 |--------|--------|
 | 開設商城（名稱、Logo、Banner、最低訂金） | 瀏覽所有商城與商品 |
 | 商品 CRUD（SKU 變體、標籤、圖片） | 購物車（跨裝置同步，Redis） |
-| 訂單狀態管理（含備註、出貨單號） | 結帳下單（多商城自動分單） |
+| 訂單狀態管理（含備註、出貨物流單號） | 結帳下單（多商城自動分單） |
 | 數據分析（30 日營收、熱銷排行） | 訂單追蹤與取消 |
 | 標籤管理 CRUD | 個人資料編輯 |
+| VIP 商城與會員折扣管理 | — |
 
 **訂單狀態機**：`pending → paid → processing → shipped → completed`（可分支 `cancelled` / `refunded`）
 
@@ -77,6 +78,25 @@
 - `setweight(A/B/C)` 為 name / category / description 設定搜尋權重
 - GIN 雙索引：`tsvector` 索引 + `gin_trgm_ops` 索引
 - 搜尋頁即時 FTS + 按需 AI 語意搜尋，展示兩種搜尋能力
+
+---
+
+### 👑 VIP 商城系統
+
+```
+批發商後台
+    ├─ 開啟 isVipOnly → 商城對非 VIP 零售商隱藏
+    ├─ 以 Email 新增 / 移除 VIP 成員
+    └─ 設定 per-variant VIP 折扣
+            ├─ percentage（百分比折扣，例：9 折）
+            └─ fixed（固定折扣金額，例：NT$50 off）
+
+下單流程
+    └─ 偵測零售商 VIP 身份 → 自動套用折扣 → 顯示折扣後單價
+```
+
+- VIP 折扣在結帳時自動計算，不影響商品公開定價
+- 批發商可對同一商城的不同規格設定不同折扣策略
 
 ---
 
@@ -151,6 +171,8 @@ StockLowEvent → NotificationsListener
 - OAuth 帳號解除綁定
 - **修改密碼**（驗證舊密碼後 bcrypt 重新雜湊）
 
+> ⚠️ LINE / Google OAuth 需申請開發者帳號並填入 `.env`，未設定時自動停用（帳密登入仍可正常使用）。
+
 ---
 
 ### 🛡️ 管理員後台
@@ -191,6 +213,7 @@ StockLowEvent → NotificationsListener
 | 排程 | @nestjs/schedule（Cron） |
 | Email | Nodemailer（SMTP） |
 | 全文搜尋 | PostgreSQL tsvector + pg_trgm |
+| 圖片上傳 | S3 Presigned URL（MinIO / Cloudflare R2） |
 
 ### Recommender — FastAPI
 
@@ -210,6 +233,7 @@ StockLowEvent → NotificationsListener
 |------|------|
 | PostgreSQL + pgvector | 16 |
 | Redis | 7 |
+| MinIO | latest（本機 S3 相容物件儲存） |
 | Docker Compose | — |
 | GitHub Actions CI | unit tests + E2E + type-check |
 
@@ -223,6 +247,7 @@ Browser
         ├── HTTP  → NestJS API (4000)
         │             ├── PostgreSQL (5432)  ← pgvector HNSW + FTS GIN index
         │             ├── Redis (6379)       ← 購物車 Hash + Celery broker
+        │             ├── MinIO (9000)       ← 商品圖片 Presigned Upload
         │             └── FastAPI (8000)     ← AI 推薦代理
         │
         └── WebSocket /notifications → NestJS (4000)
@@ -251,15 +276,16 @@ NotificationsListener
 
 ### Docker Compose Services
 
-| Service | 說明 |
-|---------|------|
-| `postgres` | PostgreSQL 16 + pgvector |
-| `redis` | Redis 7（購物車 + Celery broker） |
-| `backend` | NestJS API（port 4000） |
-| `frontend` | Next.js（port 3000） |
-| `recommender` | FastAPI（port 8000） |
-| `celery_worker` | CLIP embedding 非同步處理 |
-| `celery_beat` | SVD 定期重訓排程 |
+| Service | Port | 說明 |
+|---------|------|------|
+| `postgres` | 5432 | PostgreSQL 16 + pgvector |
+| `redis` | 6379 | Redis 7（購物車 + Celery broker） |
+| `backend` | 4000 | NestJS API |
+| `frontend` | 3000 | Next.js |
+| `recommender` | 8000 | FastAPI |
+| `minio` | 9000 / 9001 | 本機 S3 相容物件儲存（API / Console） |
+| `celery_worker` | — | CLIP embedding 非同步處理 |
+| `celery_beat` | — | SVD 定期重訓排程 |
 
 ---
 
@@ -285,7 +311,7 @@ NotificationsListener
 | `/retailer/cart` | 購物車（調整數量、刪除） |
 | `/retailer/checkout` | 結帳（多商城自動分單，自動帶入個人資料） |
 | `/retailer/orders` | 訂單列表（狀態篩選） |
-| `/retailer/orders/:id` | 訂單詳情（狀態時間軸、取消） |
+| `/retailer/orders/:id` | 訂單詳情（狀態時間軸、物流單號、取消） |
 | `/retailer/orders/:id/success` | 下單成功頁（含付款指引） |
 | `/retailer/profile` | 個人資料 + OAuth 綁定 + 修改密碼 |
 | `/retailer/onboarding` | 新用戶引導（補填店名、電話、地址） |
@@ -299,9 +325,10 @@ NotificationsListener
 | `/wholesaler/products/new` | 新增商品（含 AI 標籤建議） |
 | `/wholesaler/products/:id/edit` | 編輯商品（含 variant 庫存調整） |
 | `/wholesaler/orders` | 訂單管理（狀態篩選 + 關鍵字搜尋） |
-| `/wholesaler/orders/:id` | 訂單處理（更新狀態、物流單號、備註） |
-| `/wholesaler/analytics` | 數據分析（營收趨勢、熱銷排行、活躍零售商） |
-| `/wholesaler/shop` | 商城設定（Logo、Banner、最低訂金） |
+| `/wholesaler/orders/:id` | 訂單處理（更新狀態、物流單號填寫 / 修改、備註） |
+| `/wholesaler/analytics` | 數據分析（30 日營收趨勢、熱銷排行、活躍零售商） |
+| `/wholesaler/shop` | 商城設定（Logo、Banner、最低訂金、VIP 模式） |
+| `/wholesaler/vip` | VIP 管理（成員列表、新增 / 移除、折扣設定） |
 | `/wholesaler/tags` | 標籤管理 CRUD |
 | `/wholesaler/profile` | 帳號設定（修改密碼） |
 
@@ -358,6 +385,7 @@ Base URL：`/api/v1`
 | GET | `/` | 訂單列表（角色分流、分頁） | JWT |
 | GET | `/:id` | 訂單詳情 | JWT |
 | PATCH | `/:id/status` | 更新狀態（批發商） | JWT |
+| PATCH | `/:id/tracking` | 更新物流單號（批發商，僅 shipped） | JWT |
 | POST | `/:id/cancel` | 取消訂單（零售商） | JWT |
 
 ### Cart `/cart`
@@ -379,6 +407,13 @@ Base URL：`/api/v1`
 | GET | `/my/stats` | 商城統計（今日 / 月） | JWT |
 | GET | `/my/analytics` | 30 日分析數據 | JWT |
 | PUT | `/my` | 更新商城資訊 | JWT |
+| PATCH | `/my/vip-mode` | 切換 VIP 商城模式 | JWT |
+| GET | `/my/vip-members` | 列出 VIP 成員 | JWT |
+| POST | `/my/vip-members` | 新增 VIP 成員（by Email） | JWT |
+| DELETE | `/my/vip-members/:retailerId` | 移除 VIP 成員 | JWT |
+| GET | `/my/vip-discounts` | 列出 VIP 折扣設定 | JWT |
+| PUT | `/my/variants/:variantId/vip-discount` | 設定 VIP 折扣 | JWT |
+| DELETE | `/my/variants/:variantId/vip-discount` | 移除 VIP 折扣 | JWT |
 | GET | `/:id` | 商城詳情 | — |
 | GET | `/:id/tags` | 商城標籤列表 | — |
 
@@ -391,6 +426,12 @@ Base URL：`/api/v1`
 | POST | `/search/text` | 文字語意搜尋（CLIP） | — |
 | POST | `/search/image` | 以圖搜圖（CLIP） | — |
 | POST | `/tags/suggest` | AI 標籤建議（批發商） | JWT |
+
+### Uploads `/uploads`
+
+| 方法 | 路由 | 說明 | 認證 |
+|------|------|------|------|
+| POST | `/presign` | 產生 S3 Presigned Upload URL | JWT |
 
 ### Admin `/admin`
 
@@ -408,15 +449,17 @@ Base URL：`/api/v1`
 
 ```
 User ──┬── Wholesaler ── Shop ──┬── Product ──┬── ProductVariant (lowStockThreshold)
+       │                        │              │       └── VariantVipDiscount
        │                        │              ├── ProductImage
        │                        │              └── ProductTag ── Tag
-       │                        └── Order ─────── OrderItem
-       │                              └── OrderStatusHistory
+       │                        ├── Order ─────── OrderItem
+       │                        │     └── OrderStatusHistory
+       │                        └── ShopVipMember ── Retailer
        ├── Retailer ─────────────────── Order
        └── UserOauthAccount
 ```
 
-**Enums**：`UserRole` / `ProductStatus` / `OrderStatus` / `ProductGender` / `BehaviorAction`
+**Enums**：`UserRole` / `ProductStatus` / `OrderStatus` / `ProductGender` / `BehaviorAction` / `DiscountType`
 
 **pgvector**：`products.image_embedding vector(512)`，HNSW cosine 索引
 
@@ -442,44 +485,65 @@ cp .env.example .env
 |------|------|------|
 | `DATABASE_URL` | PostgreSQL 連線字串 | ✅ |
 | `REDIS_URL` | Redis 連線字串 | ✅ |
-| `JWT_ACCESS_SECRET` | RS256 私鑰 | ✅ |
-| `JWT_REFRESH_SECRET` | Refresh Token 私鑰 | ✅ |
+| `JWT_ACCESS_SECRET` | Access Token 簽名金鑰 | ✅ |
+| `JWT_REFRESH_SECRET` | Refresh Token 簽名金鑰 | ✅ |
+| `ENCRYPTION_KEY` | AES-256 加密金鑰（OAuth token 加密） | ✅ |
 | `LINE_CHANNEL_ID` | LINE Login Channel ID | OAuth 用 |
 | `LINE_CHANNEL_SECRET` | LINE Login Channel Secret | OAuth 用 |
+| `LINE_CALLBACK_URL` | LINE OAuth 回呼 URL | OAuth 用 |
 | `GOOGLE_CLIENT_ID` | Google OAuth Client ID | OAuth 用 |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret | OAuth 用 |
-| `GOOGLE_REDIRECT_URI` | Google OAuth 回呼 URL | OAuth 用 |
+| `GOOGLE_CALLBACK_URL` | Google OAuth 回呼 URL | OAuth 用 |
 | `LINE_NOTIFY_CLIENT_ID` | LINE Notify Client ID | 推播用 |
 | `LINE_NOTIFY_CLIENT_SECRET` | LINE Notify Client Secret | 推播用 |
 | `LINE_NOTIFY_REDIRECT_URI` | LINE Notify 回呼 URL | 推播用 |
 | `SMTP_HOST` | SMTP 伺服器位址 | Email 用 |
+| `SMTP_PORT` | SMTP Port（預設 587） | Email 用 |
 | `SMTP_USER` | SMTP 帳號 | Email 用 |
-| `SMTP_PASS` | SMTP 密碼 | Email 用 |
-| `ANTHROPIC_API_KEY` | Claude API 金鑰（LLM 解釋） | 選填 |
+| `SMTP_PASS` | SMTP 密碼 / App Password | Email 用 |
+| `SMTP_FROM` | 寄件人地址 | Email 用 |
+| `ANTHROPIC_API_KEY` | Claude API 金鑰（LLM 推薦解釋） | 選填 |
+
+> 未設定 OAuth / Email / LLM 的環境變數時，對應功能會優雅停用，其餘功能正常運作。
+
+### Demo 帳號
+
+執行 `prisma db seed` 後可使用以下帳號：
+
+| 帳號 | 密碼 | 角色 |
+|------|------|------|
+| `wholesaler@test.com` | `Test1234!` | 批發商（一般商城） |
+| `wholesaler2@test.com` | `Test1234!` | 批發商（VIP 專屬商城） |
+| `retailer@test.com` | `Test1234!` | 零售商 |
+| `retailer2@test.com` | `Test1234!` | 零售商 |
+| `retailer3@test.com` | `Test1234!` | 零售商（wholesaler2 的 VIP 成員） |
+| `admin@test.com` | `Test1234!` | 管理員 |
 
 ### 一鍵啟動（Docker）
 
 ```bash
-git clone https://github.com/justin0322/kidSwear.git
+git clone https://github.com/justin0322-pixel/kidSwear.git
 cd kidSwear
 
 cp .env.example .env
-# 編輯 .env 填入必要設定
+# 編輯 .env 填入必要設定（至少 JWT_ACCESS_SECRET、JWT_REFRESH_SECRET、ENCRYPTION_KEY）
 
 docker compose up -d
 
-# 初始化資料庫
+# 初始化資料庫與種子資料
 docker compose exec backend npx prisma migrate deploy
 docker compose exec backend npx prisma db seed
 
 open http://localhost:3000
 ```
 
+MinIO Console（圖片管理）：`http://localhost:9001`（預設帳號 `minio` / `minio123`）
+
 ### 本機開發
 
 ```bash
 # 只啟動基礎設施
-docker compose up -d postgres redis
+docker compose up -d postgres redis minio minio_init
 
 # Frontend（port 3000）
 cd frontend && pnpm install && pnpm dev
@@ -520,12 +584,14 @@ pnpm test:e2e
 
 | 測試套件 | 測試數 | 覆蓋重點 |
 |---------|--------|---------|
-| `ProductsService` | 12 | findAll（3）、findById（3）、create（2）、update（2）、remove（2） |
-| `OrdersService` | 16 | 建立訂單（6 種錯誤）、狀態機轉換、取消與庫存釋放 |
-| `CartService` | 12 | getCart、addItem 累加、updateItem、removeItem、clearCart |
+| `AuthService` | 22 | 註冊（7）、登入（5）、refresh token（4）、修改密碼（3）、登出 / OAuth（3） |
+| `ShopsService` | 25 | findAll / findById（5）、VIP 模式（2）、VIP 成員管理（6）、VIP 折扣管理（6）、isVipMember（2）、updateMyShop（2）、findMyShop（3） |
+| `OrdersService` | 16 | 建立訂單（6 種驗證）、狀態機轉換（5）、取消與庫存釋放（4） |
+| `ProductsService` | 12 | findAll 分頁與篩選（3）、findById（3）、create（2）、update（2）、remove（2） |
+| `CartService` | 12 | getCart（4）、addItem 累加（3）、updateItem（2）、removeItem（1）、clearCart（1）、TTL（1） |
 | E2E（supertest） | 12 | health、auth register/login、shops list、products list |
 | FastAPI（pytest） | 5 | health、embed_product success/422/500/invalid type |
-| **合計** | **57** | **全數通過** |
+| **合計** | **104** | **全數通過** |
 
 **CI**：GitHub Actions 在每次 push 自動執行 backend 單元 + E2E 測試、frontend type-check、FastAPI pytest。
 
@@ -536,9 +602,10 @@ pnpm test:e2e
 ### ✅ 已完成
 
 **基礎設施**
-- Docker Compose（7 個 service）
+- Docker Compose（8 個 service，含 MinIO）
 - PostgreSQL 16 + pgvector HNSW 向量索引
 - Redis 7（購物車 Hash + Celery broker）
+- MinIO S3 相容物件儲存（Presigned Upload）
 - GitHub Actions CI（unit / E2E / type-check / pytest）
 
 **認證**
@@ -550,12 +617,13 @@ pnpm test:e2e
 - 修改密碼（驗證舊密碼 → bcrypt 重雜湊）
 
 **批發商**
-- 商品 CRUD（SKU 變體、標籤、圖片 URL）
+- 商品 CRUD（SKU 變體、標籤、圖片 Presigned Upload）
 - 商品篩選（狀態 / 分類篩選）
-- 訂單管理（完整狀態機 + 關鍵字搜尋）
+- 訂單管理（完整狀態機 + 物流單號填寫 / 修改 + 關鍵字搜尋）
 - 儀表板統計（今日訂單、月營收、商品數）
 - 數據分析（30 日趨勢、Top 5 商品 / 零售商、狀態分布）
 - 商城設定（Logo、Banner、最低訂金）
+- VIP 商城系統（開關 isVipOnly、成員管理、per-variant 折扣）
 - 標籤管理 CRUD
 - 帳號設定（修改密碼）
 
@@ -563,9 +631,9 @@ pnpm test:e2e
 - AI 個人化推薦首頁（SVD + LLM 解釋 + 最近瀏覽）
 - 商品搜尋（即時 FTS + AI 語意 + 以圖搜圖）
 - 購物車（Redis Hash，跨裝置同步）
-- 多商城結帳（自動帶入個人資料、自動分單）
+- 多商城結帳（自動帶入個人資料、自動分單、VIP 折扣自動套用）
 - 下單成功頁（含付款指引）
-- 訂單列表 / 詳情 / 追蹤 / 取消
+- 訂單列表 / 詳情 / 物流追蹤 / 取消
 - 個人資料編輯（含電話、OAuth 綁定、修改密碼）
 
 **AI**
@@ -603,8 +671,10 @@ pnpm test:e2e
 - Role-based guard
 
 **測試**
-- ProductsService 單元測試（12 tests）
+- AuthService 單元測試（22 tests）
+- ShopsService 單元測試（25 tests）
 - OrdersService 單元測試（16 tests）
+- ProductsService 單元測試（12 tests）
 - CartService 單元測試（12 tests）
 - E2E 測試 12 cases（supertest）
 - FastAPI pytest 5 cases
@@ -615,7 +685,6 @@ pnpm test:e2e
 - 物流整合（黑貓 / 新竹物流）
 - 電子發票
 - CSV 訂單匯出
-- 訂單分析 Dashboard（Recharts 圖表）
 
 ---
 
@@ -665,4 +734,4 @@ MIT License
 ## 作者
 
 本專案為求職作品集，展示全端 + AI + DevOps 綜合能力。  
-歡迎透過 [issue](https://github.com/justin0322/kidSwear/issues) 交流討論。
+歡迎透過 [issue](https://github.com/justin0322-pixel/kidSwear/issues) 交流討論。

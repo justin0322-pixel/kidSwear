@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import {
   useOrder,
   useUpdateOrderStatus,
+  useUpdateTracking,
   STATUS_LABEL,
   STATUS_COLOR,
   STATUS_ICON,
@@ -76,10 +77,13 @@ export default function WholesalerOrderDetailPage() {
 
   const { data: order, isLoading, isError } = useOrder(orderId)
   const { mutate: updateStatus, isPending } = useUpdateOrderStatus(orderId)
+  const { mutate: updateTracking, isPending: isTrackingPending } = useUpdateTracking(orderId)
 
   const [note, setNote] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [confirmTransition, setConfirmTransition] = useState<OrderStatus | null>(null)
+  const [editingTracking, setEditingTracking] = useState(false)
+  const [editTrackingValue, setEditTrackingValue] = useState('')
 
   const transitions = order ? (WHOLESALER_TRANSITIONS[order.status] ?? []) : []
   const needsTracking = confirmTransition
@@ -183,7 +187,53 @@ export default function WholesalerOrderDetailPage() {
                     <p className="text-gray-900">{new Date(order.completedAt).toLocaleString('zh-TW')}</p>
                   </div>
                 )}
-                {order.trackingNumber && (
+                {order.status === 'shipped' && (
+                  <div className="col-span-2">
+                    <p className="text-gray-400 text-xs mb-0.5">物流單號</p>
+                    {editingTracking ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="h-8 text-sm font-mono"
+                          placeholder="例：123456789（黑貓宅急便）"
+                          value={editTrackingValue}
+                          onChange={(e) => setEditTrackingValue(e.target.value)}
+                          autoFocus
+                        />
+                        <Button
+                          size="sm"
+                          disabled={isTrackingPending || !editTrackingValue.trim()}
+                          onClick={() =>
+                            updateTracking(editTrackingValue.trim(), {
+                              onSuccess: () => setEditingTracking(false),
+                            })
+                          }
+                        >
+                          儲存
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingTracking(false)}>
+                          取消
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-gray-900 font-mono font-medium">
+                          {order.trackingNumber ?? <span className="text-gray-400 font-sans font-normal">尚未填寫</span>}
+                        </p>
+                        <button
+                          type="button"
+                          className="text-xs text-blue-500 hover:text-blue-700 underline"
+                          onClick={() => {
+                            setEditTrackingValue(order.trackingNumber ?? '')
+                            setEditingTracking(true)
+                          }}
+                        >
+                          {order.trackingNumber ? '修改' : '填寫'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {order.status !== 'shipped' && order.trackingNumber && (
                   <div>
                     <p className="text-gray-400 text-xs mb-0.5">物流單號</p>
                     <p className="text-gray-900 font-mono font-medium">{order.trackingNumber}</p>

@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateTrackingDto } from './dto/update-tracking.dto';
 import { OrdersService } from './orders.service';
 
 @ApiTags('orders')
@@ -81,6 +82,18 @@ export class OrdersController {
     @Body() dto: UpdateOrderStatusDto,
   ): Promise<object> {
     const data = await this.ordersService.updateStatus(BigInt(req.user.sub), BigInt(id), dto);
+    return { success: true, data };
+  }
+
+  @Patch(':id/tracking')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '更新物流單號（批發商，僅 shipped）' })
+  async updateTracking(
+    @Req() req: Request & { user: JwtPayload },
+    @Param('id') id: string,
+    @Body() dto: UpdateTrackingDto,
+  ): Promise<object> {
+    const data = await this.ordersService.updateTracking(BigInt(req.user.sub), BigInt(id), dto);
     return { success: true, data };
   }
 

@@ -9,6 +9,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateTrackingDto } from './dto/update-tracking.dto';
 import {
   ORDER_CREATED,
   ORDER_STATUS_CHANGED,
@@ -426,6 +427,32 @@ export class OrdersService {
     }
 
     return result;
+  }
+
+  async updateTracking(userId: bigint, orderId: bigint, dto: UpdateTrackingDto) {
+    const wholesaler = await this.prisma.wholesaler.findUnique({
+      where: { userId },
+      include: { shop: true },
+    });
+    if (!wholesaler?.shop) throw new ForbiddenException();
+
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order || order.shopId !== wholesaler.shop.id) {
+      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: '訂單不存在' });
+    }
+    if (order.status !== OrderStatus.shipped) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '只有已出貨的訂單可以更新物流單號',
+      });
+    }
+
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: { trackingNumber: dto.trackingNumber },
+    });
+
+    return this.findById(userId, UserRole.wholesaler, orderId);
   }
 
   async cancel(userId: bigint, orderId: bigint) {
