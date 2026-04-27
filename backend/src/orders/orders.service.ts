@@ -214,6 +214,8 @@ export class OrdersService {
           shop.wholesaler.userId.toString(),
           retailer.shopName,
           shop.wholesaler.user.email ?? '',
+          result.total,
+          result.itemCount,
         ),
       );
     }

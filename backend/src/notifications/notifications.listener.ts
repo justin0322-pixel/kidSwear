@@ -36,6 +36,8 @@ export class NotificationsListener {
         event.wholesalerEmail,
         event.orderNumber,
         event.retailerShopName,
+        event.total,
+        event.itemCount,
       );
     }
 

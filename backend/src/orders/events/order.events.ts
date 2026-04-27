@@ -21,6 +21,8 @@ export class OrderCreatedEvent {
     public readonly wholesalerUserId: string,
     public readonly retailerShopName: string,
     public readonly wholesalerEmail: string,
+    public readonly total: string,
+    public readonly itemCount: number,
   ) {}
 }
 
